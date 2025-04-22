@@ -1,4 +1,6 @@
 import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
 from sales_forecasting_model import run_forecasting_pipeline
 
 st.set_page_config(page_title="Sales Forecasting", layout="wide")

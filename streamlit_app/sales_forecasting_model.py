@@ -103,20 +103,6 @@ def get_us_holidays(start_date, end_date):
     return holiday_df.reset_index().rename(columns={'index': 'ds'})
 
 
-# Train Prophet Model
-def train_prophet(train_df, holidays=None):
-    m = Prophet(holidays=holidays)
-    m.add_regressor('day_of_week')
-    m.add_regressor('month')
-    m.add_regressor('is_weekend')
-    m.fit(train_df[['ds', 'y', 'day_of_week', 'month', 'is_weekend']])
-    
-    if m is None:
-        raise ValueError("Prophet model training failed.")
-    
-    return m
-
-
 # Train LSTM Model
 def train_lstm(train_df):
     scaler = MinMaxScaler(feature_range=(0, 1))
@@ -139,10 +125,21 @@ def train_lstm(train_df):
     model.fit(X_train, y_train, epochs=20, batch_size=32)
     
     return model, scaler
+# تحديث دالة train_prophet مع تحقق أكبر
+def train_prophet(train_df, holidays=None):
+    try:
+        m = Prophet(holidays=holidays)
+        m.add_regressor('day_of_week')
+        m.add_regressor('month')
+        m.add_regressor('is_weekend')
+        m.fit(train_df[['ds', 'y', 'day_of_week', 'month', 'is_weekend']])
+        return m
+    except Exception as e:
+        print(f"Error during Prophet model training: {e}")
+        return None
 
 
-# Forecast Future (Prophet & LSTM)
-# تحديث دالة forecast_with_model
+# تحديث دالة forecast_with_model مع تحقق من النموذج
 def forecast_with_model(model, horizon, start_date, df=None, lstm_model=None, scaler=None):
     if model is None:
         raise ValueError("The Prophet model is None. Please ensure the model is trained before forecasting.")
@@ -154,7 +151,11 @@ def forecast_with_model(model, horizon, start_date, df=None, lstm_model=None, sc
     future_df['is_weekend'] = future_df['day_of_week'].isin([5, 6]).astype(int)
 
     # Prophet Forecasting
-    forecast_prophet = model.predict(future_df)
+    try:
+        forecast_prophet = model.predict(future_df)
+    except Exception as e:
+        print(f"Error during Prophet forecasting: {e}")
+        forecast_prophet = None
 
     # LSTM Forecasting
     if lstm_model and scaler:
@@ -167,41 +168,45 @@ def forecast_with_model(model, horizon, start_date, df=None, lstm_model=None, sc
 
     return forecast_prophet, forecast_lstm
 
-# تحديث دالة run_forecasting_pipeline
+# تحديث دالة run_forecasting_pipeline مع تحقق أكبر
 def run_forecasting_pipeline(csv_path):
-    df = load_and_prepare(csv_path)
-    if feedback_available():
-        df = merge_with_feedback(df)
+    try:
+        df = load_and_prepare(csv_path)
+        if feedback_available():
+            df = merge_with_feedback(df)
 
-    train_df, test_df = split_data(df)
-    holidays = get_us_holidays(train_df['ds'].min(), test_df['ds'].max())
-    
-    # Prophet model
-    with mlflow.start_run():
-        mlflow.set_tag("model", "prophet")
-        model_prophet = train_prophet(train_df, holidays)
-        
-        if model_prophet is None:
-            raise ValueError("The Prophet model failed to train.")
-        
-        forecast_prophet, _ = forecast_with_model(model_prophet, len(test_df), test_df['ds'].min())
+        train_df, test_df = split_data(df)
+        holidays = get_us_holidays(train_df['ds'].min(), test_df['ds'].max())
 
-        rmse, mae, mape = evaluate_forecast(test_df['y'].values, forecast_prophet['yhat'].values, "Prophet")
-        log_metrics(test_df['ds'].max(), rmse, mae, mape)
-        mlflow.log_metric("rmse", rmse)
-        mlflow.log_metric("mae", mae)
-        mlflow.log_metric("mape", mape)
+        # Prophet model
+        with mlflow.start_run():
+            mlflow.set_tag("model", "prophet")
+            model_prophet = train_prophet(train_df, holidays)
 
-    # LSTM model
-    with mlflow.start_run():
-        mlflow.set_tag("model", "lstm")
-        model_lstm, scaler = train_lstm(train_df)
-        forecast_lstm, _ = forecast_with_model(None, len(test_df), test_df['ds'].min(), df, model_lstm, scaler)
+            if model_prophet is None:
+                raise ValueError("The Prophet model failed to train.")
+            
+            forecast_prophet, _ = forecast_with_model(model_prophet, len(test_df), test_df['ds'].min())
 
-        rmse, mae, mape = evaluate_forecast(test_df['y'].values, forecast_lstm, "LSTM")
-        log_metrics(test_df['ds'].max(), rmse, mae, mape)
-        mlflow.log_metric("rmse", rmse)
-        mlflow.log_metric("mae", mae)
-        mlflow.log_metric("mape", mape)
+            rmse, mae, mape = evaluate_forecast(test_df['y'].values, forecast_prophet['yhat'].values, "Prophet")
+            log_metrics(test_df['ds'].max(), rmse, mae, mape)
+            mlflow.log_metric("rmse", rmse)
+            mlflow.log_metric("mae", mae)
+            mlflow.log_metric("mape", mape)
 
-    return model_prophet, model_lstm, forecast_prophet, forecast_lstm, test_df, mape
+        # LSTM model
+        with mlflow.start_run():
+            mlflow.set_tag("model", "lstm")
+            model_lstm, scaler = train_lstm(train_df)
+            forecast_lstm, _ = forecast_with_model(None, len(test_df), test_df['ds'].min(), df, model_lstm, scaler)
+
+            rmse, mae, mape = evaluate_forecast(test_df['y'].values, forecast_lstm, "LSTM")
+            log_metrics(test_df['ds'].max(), rmse, mae, mape)
+            mlflow.log_metric("rmse", rmse)
+            mlflow.log_metric("mae", mae)
+            mlflow.log_metric("mape", mape)
+
+        return model_prophet, model_lstm, forecast_prophet, forecast_lstm, test_df, mape
+    except Exception as e:
+        print(f"Error during forecasting pipeline: {e}")
+        return None, None, None, None, None, None

@@ -149,13 +149,17 @@ def forecast_with_model(model, horizon, start_date, df=None, lstm_model=None, sc
     forecast_prophet = model.predict(future_df)
 
     # LSTM Forecasting
-    future_scaled = scaler.transform(future_df[['y']].fillna(0))  # Example for LSTM usage
-    forecast_lstm = lstm_model.predict(future_scaled)
+    if lstm_model and scaler:
+        # استخدام البيانات المستقبلية لإنتاج التنبؤات
+        future_scaled = scaler.transform(future_df[['ds']].fillna(0))  # استخدم القيم المناسبة هنا 
+        forecast_lstm = lstm_model.predict(future_scaled)
+    else:
+        forecast_lstm = None
 
     return forecast_prophet, forecast_lstm
 
-
-# Main forecasting pipeline with MLflow tracking
+#
+# run_forecasting_pipeline
 def run_forecasting_pipeline(csv_path):
     df = load_and_prepare(csv_path)
     if feedback_available():
@@ -163,7 +167,7 @@ def run_forecasting_pipeline(csv_path):
 
     train_df, test_df = split_data(df)
     holidays = get_us_holidays(train_df['ds'].min(), test_df['ds'].max())
-
+    
     # Prophet model
     with mlflow.start_run():
         mlflow.set_tag("model", "prophet")

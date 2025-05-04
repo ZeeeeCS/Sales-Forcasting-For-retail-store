@@ -1,37 +1,22 @@
-import mlflow
-import mlflow.prophet
-import mlflow.keras
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.metrics import mean_squared_error, mean_absolute_error
 from prophet import Prophet
-from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
 from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
-from sklearn.preprocessing import MinMaxScaler
-
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+import matplotlib.pyplot as plt
 import os
-import warnings
 
-warnings.filterwarnings('ignore')
-
-
+# ---- Helper Functions ----
 def mean_absolute_percentage_error(y_true, y_pred):
-    """Calculates MAPE given y_true and y_pred"""
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 
-
-# Helper functions for evaluation and logging
 def evaluate_forecast(y_true, y_pred, name="Model"):
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mae = mean_absolute_error(y_true, y_pred)
     mape = mean_absolute_percentage_error(y_true, y_pred)
     print(f"{name} RMSE: {rmse:.2f}, MAE: {mae:.2f}, MAPE: {mape:.2f}%")
     return rmse, mae, mape
-
 
 def log_metrics(date, rmse, mae, mape, log_file="metrics_log.csv"):
     log_exists = os.path.exists(log_file)
@@ -43,10 +28,8 @@ def log_metrics(date, rmse, mae, mape, log_file="metrics_log.csv"):
     else:
         row.to_csv(log_file, index=False)
 
-
 def check_drift(current_mape, threshold=20.0):
     return current_mape > threshold
-
 
 def check_drift_trend(log_file="metrics_log.csv", threshold=20.0, recent=5):
     if os.path.exists(log_file):
@@ -57,156 +40,97 @@ def check_drift_trend(log_file="metrics_log.csv", threshold=20.0, recent=5):
     return False
 
 
-def feedback_available(feedback_path="feedback_data.csv"):
-    return os.path.exists(feedback_path)
-
-
-def merge_with_feedback(main_df, feedback_path="feedback_data.csv"):
-    if os.path.exists(feedback_path):
-        feedback_df = pd.read_csv(feedback_path)
-        feedback_df['Date'] = pd.to_datetime(feedback_df['Date'])
-        feedback_df = feedback_df.groupby('Date', as_index=False)['Units Sold'].sum()
-        feedback_df['day_of_week'] = feedback_df['Date'].dt.dayofweek
-        feedback_df['month'] = feedback_df['Date'].dt.month
-        feedback_df['is_weekend'] = feedback_df['day_of_week'].isin([5, 6]).astype(int)
-        feedback_df = feedback_df.rename(columns={'Date': 'ds', 'Units Sold': 'y'})
-        combined = pd.concat([main_df, feedback_df], ignore_index=True).drop_duplicates(subset='ds')
-        return combined.sort_values('ds')
-    else:
-        return main_df
-
-
-# Load and prepare the data
+# ---- Load & Prepare Data ----
 def load_and_prepare(filepath):
     data = pd.read_csv(filepath)
     data['Date'] = pd.to_datetime(data['Date'])
-    daily_df = data.groupby('Date', as_index=False)['Units Sold'].sum()
+    daily_df = data.groupby('Date', as_index=False)['Demand Forecast'].sum()
     daily_df['day_of_week'] = daily_df['Date'].dt.dayofweek
     daily_df['month'] = daily_df['Date'].dt.month
     daily_df['is_weekend'] = daily_df['day_of_week'].isin([5, 6]).astype(int)
-    daily_df = daily_df.rename(columns={'Date': 'ds', 'Units Sold': 'y'})
+    daily_df = daily_df.rename(columns={'Date': 'ds', 'Demand Forecast': 'y'})
     return daily_df
 
-
-# Split the data into training and testing sets
+# ---- Split Data ----
 def split_data(df, split_date='2023-10-01'):
     train = df[df['ds'] < split_date]
     test = df[df['ds'] >= split_date]
     return train, test
 
-
-# Add US Holidays to the forecast
+# ---- Add US Holidays ----
 def get_us_holidays(start_date, end_date):
     cal = calendar()
     holidays = cal.holidays(start=start_date, end=end_date, return_name=True)
     holiday_df = pd.DataFrame(data=holidays, columns=['holiday'])
     return holiday_df.reset_index().rename(columns={'index': 'ds'})
 
+# ---- Hyperparameter Tuning ----
+def tune_prophet(train_df, holidays, test_df):
+    best_model = None
+    best_mape = float('inf')
+    best_forecast = None
 
-# Train LSTM Model
-def train_lstm(train_df):
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    train_scaled = scaler.fit_transform(train_df[['y']].values)
+    for cps in [0.01, 0.1, 0.5]:
+        for sps in [1.0, 10.0, 20.0]:
+            m = Prophet(holidays=holidays,
+                       changepoint_prior_scale=cps,
+                       seasonality_prior_scale=sps)
+            m.add_regressor('day_of_week')
+            m.add_regressor('month')
+            m.add_regressor('is_weekend')
+            m.fit(train_df[['ds', 'y', 'day_of_week', 'month', 'is_weekend']])
 
-    X_train, y_train = [], []
-    for i in range(60, len(train_scaled)):
-        X_train.append(train_scaled[i-60:i, 0])
-        y_train.append(train_scaled[i, 0])
-    X_train, y_train = np.array(X_train), np.array(y_train)
+            future = pd.date_range(start=test_df['ds'].min(), periods=len(test_df), freq='D')
+            future_df = pd.DataFrame({'ds': future})
+            future_df['day_of_week'] = future_df['ds'].dt.dayofweek
+            future_df['month'] = future_df['ds'].dt.month
+            future_df['is_weekend'] = future_df['day_of_week'].isin([5, 6]).astype(int)
 
-    X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
+            forecast = m.predict(future_df)
+            y_true = test_df['y'].values
+            y_pred = forecast['yhat'].values
+            mape = mean_absolute_percentage_error(y_true, y_pred)
 
-    model = Sequential()
-    model.add(LSTM(units=50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
-    model.add(LSTM(units=50, return_sequences=False))
-    model.add(Dense(units=1))
+            if mape < best_mape:
+                best_model = m
+                best_mape = mape
+                best_forecast = forecast
 
-    model.compile(optimizer='adam', loss='mean_squared_error')
-    model.fit(X_train, y_train, epochs=20, batch_size=32)
-    
-    return model, scaler
-# تحديث دالة train_prophet مع تحقق أكبر
-def train_prophet(train_df, holidays=None):
-    try:
-        m = Prophet(holidays=holidays)
-        m.add_regressor('day_of_week')
-        m.add_regressor('month')
-        m.add_regressor('is_weekend')
-        m.fit(train_df[['ds', 'y', 'day_of_week', 'month', 'is_weekend']])
-        return m
-    except Exception as e:
-        print(f"Error during Prophet model training: {e}")
-        return None
+    return best_model, best_forecast
 
+# ---- Residual Analysis ----
+def plot_residuals(test_df, forecast):
+    y_true = test_df['y'].values
+    y_pred = forecast[forecast['ds'].isin(test_df['ds'])]['yhat'].values
+    residuals = y_true - y_pred
 
-# تحديث دالة forecast_with_model مع تحقق من النموذج
-def forecast_with_model(model, horizon, start_date, df=None, lstm_model=None, scaler=None):
-    if model is None:
-        raise ValueError("The Prophet model is None. Please ensure the model is trained before forecasting.")
-    
-    future = pd.date_range(start=start_date, periods=horizon, freq='D')
-    future_df = pd.DataFrame({'ds': future})
-    future_df['day_of_week'] = future_df['ds'].dt.dayofweek
-    future_df['month'] = future_df['ds'].dt.month
-    future_df['is_weekend'] = future_df['day_of_week'].isin([5, 6]).astype(int)
+    fig, axs = plt.subplots(1, 2, figsize=(14, 5))
+    axs[0].hist(residuals, bins=30, color='gray')
+    axs[0].set_title("Residual Distribution")
+    axs[0].set_xlabel("Residual")
 
-    # Prophet Forecasting
-    try:
-        forecast_prophet = model.predict(future_df)
-    except Exception as e:
-        print(f"Error during Prophet forecasting: {e}")
-        forecast_prophet = None
+    axs[1].plot(test_df['ds'], residuals, marker='o', linestyle='-')
+    axs[1].set_title("Residuals Over Time")
+    axs[1].set_xlabel("Date")
+    axs[1].set_ylabel("Residual")
+    plt.tight_layout()
+    plt.show()
 
-    # LSTM Forecasting
-    if lstm_model and scaler:
-        future_scaled = scaler.transform(future_df[['y']].fillna(0))  
-        future_scaled = np.reshape(future_scaled, (future_scaled.shape[0], future_scaled.shape[1], 1))  
-        forecast_lstm = lstm_model.predict(future_scaled)
-    else:
-        forecast_lstm = None
-
-    return forecast_prophet, forecast_lstm
-
-
-# تحديث دالة run_forecasting_pipeline مع تحقق أكبر
+# ---- Main Process ----
 def run_forecasting_pipeline(csv_path):
-    try:
-        df = load_and_prepare(csv_path)
-        if feedback_available():
-            df = merge_with_feedback(df)
+    df = load_and_prepare(csv_path)
+    train_df, test_df = split_data(df)
+    holidays = get_us_holidays(train_df['ds'].min(), test_df['ds'].max())
 
-        train_df, test_df = split_data(df)
-        holidays = get_us_holidays(train_df['ds'].min(), test_df['ds'].max())
+    model, forecast = tune_prophet(train_df, holidays, test_df)
+    forecast_test = forecast[forecast['ds'].isin(test_df['ds'])]
 
-        # Prophet model
-        with mlflow.start_run():
-            mlflow.set_tag("model", "prophet")
-            model_prophet = train_prophet(train_df, holidays)
+    rmse, mae, mape = evaluate_forecast(test_df['y'].values, forecast_test['yhat'].values, "Best Tuned Prophet")
+    log_metrics(test_df['ds'].max(), rmse, mae, mape)
+    drift = check_drift(mape)
+    persistent_drift = check_drift_trend()
 
-            if model_prophet is None:
-                raise ValueError("The Prophet model failed to train.")
-            
-            forecast_prophet, _ = forecast_with_model(model_prophet, len(test_df), test_df['ds'].min())
 
-            rmse, mae, mape = evaluate_forecast(test_df['y'].values, forecast_prophet['yhat'].values, "Prophet")
-            log_metrics(test_df['ds'].max(), rmse, mae, mape)
-            mlflow.log_metric("rmse", rmse)
-            mlflow.log_metric("mae", mae)
-            mlflow.log_metric("mape", mape)
+    plot_residuals(test_df, forecast)
 
-        # LSTM model
-        with mlflow.start_run():
-            mlflow.set_tag("model", "lstm")
-            model_lstm, scaler = train_lstm(train_df)
-            forecast_lstm, _ = forecast_with_model(None, len(test_df), test_df['ds'].min(), df, model_lstm, scaler)
-
-            rmse, mae, mape = evaluate_forecast(test_df['y'].values, forecast_lstm, "LSTM")
-            log_metrics(test_df['ds'].max(), rmse, mae, mape)
-            mlflow.log_metric("rmse", rmse)
-            mlflow.log_metric("mae", mae)
-            mlflow.log_metric("mape", mape)
-
-        return model_prophet, model_lstm, forecast_prophet, forecast_lstm, test_df, mape
-    except Exception as e:
-        print(f"Error during forecasting pipeline: {e}")
-        return None, None, None, None, None, None
+    return model, forecast, test_df, mape, drift, persistent_drift

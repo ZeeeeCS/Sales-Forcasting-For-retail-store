@@ -6,15 +6,15 @@ from prophet import Prophet
 from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 import os
 import warnings
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+from tensorflow.keras.optimizers import Adam
 warnings.filterwarnings('ignore')
 
 
-def mean_absolute_percentage_error(y_true, y_pred):
-    """Calculates MAPE given y_true and y_pred"""
-    y_true, y_pred = np.array(y_true), np.array(y_pred)
-    return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 # ---- Helper Functions ----
 def mean_absolute_percentage_error(y_true, y_pred):
+    """Calculates MAPE given y_true and y_pred"""
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 
@@ -48,6 +48,7 @@ def check_drift_trend(log_file="metrics_log.csv", threshold=20.0, recent=5):
 
 def feedback_available(feedback_path="feedback_data.csv"):
     return os.path.exists(feedback_path)
+
 def merge_with_feedback(main_df, feedback_path="feedback_data.csv"):
     if os.path.exists(feedback_path):
         feedback_df = pd.read_csv(feedback_path)
@@ -95,6 +96,35 @@ def train_prophet(train_df, holidays=None):
     m.fit(train_df[['ds', 'y', 'day_of_week', 'month', 'is_weekend']])
     return m
 
+# ---- Train LSTM Model ----
+def create_lstm_model(input_shape):
+    model = Sequential()
+    model.add(LSTM(units=50, activation='relu', input_shape=input_shape))
+    model.add(Dense(1))
+    model.compile(optimizer=Adam(), loss='mean_squared_error')
+    return model
+
+def prepare_lstm_data(df):
+    # تحويل البيانات لتكون مناسبة لــ LSTM
+    X = df[['day_of_week', 'month', 'is_weekend']].values
+    y = df['y'].values
+    return X, y
+
+def train_lstm_model(train_df, test_df):
+    X_train, y_train = prepare_lstm_data(train_df)
+    X_test, y_test = prepare_lstm_data(test_df)
+
+    # تحويل الشكل إلى (n_samples, timesteps, n_features)
+    X_train = X_train.reshape((X_train.shape[0], 1, X_train.shape[1]))
+    X_test = X_test.reshape((X_test.shape[0], 1, X_test.shape[1]))
+
+    model = create_lstm_model((X_train.shape[1], X_train.shape[2]))
+    model.fit(X_train, y_train, epochs=20, batch_size=32, verbose=1)
+
+    # التنبؤ
+    y_pred = model.predict(X_test)
+    return model, y_pred
+
 # ---- Forecast Future ----
 def forecast_with_model(model, horizon, start_date):
     future = pd.date_range(start=start_date, periods=horizon, freq='D')
@@ -108,18 +138,27 @@ def forecast_with_model(model, horizon, start_date):
 # ---- Main Process (used in script or Streamlit) ----
 def run_forecasting_pipeline(csv_path):
     df = load_and_prepare(csv_path)
+    if feedback_available():
+        df = merge_with_feedback(df)
+    
     train_df, test_df = split_data(df)
     holidays = get_us_holidays(train_df['ds'].min(), test_df['ds'].max())
-    model = train_prophet(train_df, holidays)
-    forecast = forecast_with_model(model, len(test_df), test_df['ds'].min())
-    forecast_test = forecast[forecast['ds'].isin(test_df['ds'])]
-
-    rmse, mae, mape = evaluate_forecast(test_df['y'].values, forecast_test['yhat'].values, "Prophet + Holidays")
-    log_metrics(test_df['ds'].max(), rmse, mae, mape)
-    drift = check_drift(mape)
-    persistent_drift = check_drift_trend()
-    feedback_ready=merge_with_feedback(train_df, feedback_path="feedback_data.csv")
     
+    # Train Prophet model
+    prophet_model = train_prophet(train_df, holidays)
+    forecast_prophet = forecast_with_model(prophet_model, len(test_df), test_df['ds'].min())
+    forecast_prophet_test = forecast_prophet[forecast_prophet['ds'].isin(test_df['ds'])]
+    rmse_prophet, mae_prophet, mape_prophet = evaluate_forecast(test_df['y'].values, forecast_prophet_test['yhat'].values, "Prophet + Holidays")
+    log_metrics(test_df['ds'].max(), rmse_prophet, mae_prophet, mape_prophet)
+    
+    # Train LSTM model
+    lstm_model, y_pred_lstm = train_lstm_model(train_df, test_df)
+    rmse_lstm, mae_lstm, mape_lstm = evaluate_forecast(test_df['y'].values, y_pred_lstm, "LSTM")
+    log_metrics(test_df['ds'].max(), rmse_lstm, mae_lstm, mape_lstm)
+    
+    # Check drift
+    drift_prophet = check_drift(mape_prophet)
+    persistent_drift = check_drift_trend()
+    feedback_ready = feedback_available()
 
-    return model, forecast, test_df, mape, drift, persistent_drift, feedback_ready
-
+    return prophet_model, forecast_prophet, lstm_model, y_pred_lstm, drift_prophet, persistent_drift, feedback_ready

@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 from sales_forecasting_model import run_forecasting_pipeline
+import mlflow
 
 st.set_page_config(page_title="Sales Forecasting", layout="wide")
 st.title("📈 Sales Forecasting with Prophet")
@@ -25,6 +26,12 @@ if uploaded_file:
             f.write(uploaded_file.read())
 
         model, forecast, test_df, mape, drift, persistent_drift, feedback_ready = run_forecasting_pipeline(uploaded_path)
+
+        # Log experiment with MLflow
+        with mlflow.start_run():
+            mlflow.log_param("mape", mape)
+            mlflow.log_metric("drift_detected", drift)
+            mlflow.log_metric("persistent_drift", persistent_drift)
 
         st.success("✅ Forecast Complete!")
 

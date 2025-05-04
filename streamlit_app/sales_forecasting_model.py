@@ -48,6 +48,19 @@ def check_drift_trend(log_file="metrics_log.csv", threshold=20.0, recent=5):
 
 def feedback_available(feedback_path="feedback_data.csv"):
     return os.path.exists(feedback_path)
+def merge_with_feedback(main_df, feedback_path="feedback_data.csv"):
+    if os.path.exists(feedback_path):
+        feedback_df = pd.read_csv(feedback_path)
+        feedback_df['Date'] = pd.to_datetime(feedback_df['Date'])
+        feedback_df = feedback_df.groupby('Date', as_index=False)['Units Sold'].sum()
+        feedback_df['day_of_week'] = feedback_df['Date'].dt.dayofweek
+        feedback_df['month'] = feedback_df['Date'].dt.month
+        feedback_df['is_weekend'] = feedback_df['day_of_week'].isin([5, 6]).astype(int)
+        feedback_df = feedback_df.rename(columns={'Date': 'ds', 'Units Sold': 'y'})
+        combined = pd.concat([main_df, feedback_df], ignore_index=True).drop_duplicates(subset='ds')
+        return combined.sort_values('ds')
+    else:
+        return main_df
 
 # ---- Load & Prepare Data ----
 def load_and_prepare(filepath):
@@ -105,7 +118,8 @@ def run_forecasting_pipeline(csv_path):
     log_metrics(test_df['ds'].max(), rmse, mae, mape)
     drift = check_drift(mape)
     persistent_drift = check_drift_trend()
-    feedback_ready = feedback_available()
+    feedback_ready=merge_with_feedback(train_df, feedback_path="feedback_data.csv")
+    
 
     return model, forecast, test_df, mape, drift, persistent_drift, feedback_ready
 

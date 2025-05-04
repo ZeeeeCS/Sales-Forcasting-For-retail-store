@@ -10,6 +10,8 @@ from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
+from sklearn.preprocessing import MinMaxScaler
+
 import os
 import warnings
 

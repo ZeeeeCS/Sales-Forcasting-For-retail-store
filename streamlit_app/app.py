@@ -28,14 +28,18 @@ if uploaded_file:
         st.success("✅ Forecast Complete!")
 
         st.subheader("Prophet Forecast vs Actual (Test Data)")
-        fig, ax = plt.subplots(figsize=(12, 5))
-        ax.plot(test_df['ds'], test_df['y'], label='Actual', color='black')
-        forecast_filtered = forecast_prophet[forecast_prophet['ds'].isin(test_df['ds'])]
-        ax.plot(forecast_filtered['ds'], forecast_filtered['yhat'], label='Forecast', color='blue')
-        ax.fill_between(forecast_filtered['ds'], forecast_filtered['yhat_lower'], forecast_filtered['yhat_upper'], color='lightblue', alpha=0.4)
-        ax.set_title("Prophet Forecast vs Actual")
-        ax.legend()
-        st.pyplot(fig)
+        if forecast_prophet is not None:
+            forecast_filtered = forecast_prophet[forecast_prophet['ds'].isin(test_df['ds'])]
+            fig, ax = plt.subplots(figsize=(12, 5))
+            ax.plot(test_df['ds'], test_df['y'], label='Actual', color='black')
+            ax.plot(forecast_filtered['ds'], forecast_filtered['yhat'], label='Forecasted', color='blue')
+            ax.fill_between(forecast_filtered['ds'], forecast_filtered['yhat_lower'], forecast_filtered['yhat_upper'], color='blue', alpha=0.2)
+            ax.set_title('Prophet Forecast vs Actual (Test Data)')
+            ax.legend()
+            st.pyplot(fig)
+        else:
+            st.error("Prophet model failed to return a forecast. Please check the model training.")
+
 
         st.subheader("LSTM Forecast vs Actual (Test Data)")
         fig, ax = plt.subplots(figsize=(12, 5))

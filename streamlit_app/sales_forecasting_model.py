@@ -159,14 +159,14 @@ def forecast_with_model(model, horizon, start_date, df=None, lstm_model=None, sc
 
     # LSTM Forecasting
     if lstm_model and scaler:
-        # تأكد من تحجيم البيانات بشكل صحيح باستخدام scaler
-        future_scaled = scaler.transform(future_df[['y']].fillna(0))  # استخدم العمود المناسب من البيانات
-        future_scaled = np.reshape(future_scaled, (future_scaled.shape[0], future_scaled.shape[1], 1))  # إعادة تشكيل البيانات للتنبؤ باستخدام LSTM
+        future_scaled = scaler.transform(future_df[['y']].fillna(0))  
+        future_scaled = np.reshape(future_scaled, (future_scaled.shape[0], future_scaled.shape[1], 1))  
         forecast_lstm = lstm_model.predict(future_scaled)
     else:
         forecast_lstm = None
 
     return forecast_prophet, forecast_lstm
+
 
 # تحديث دالة run_forecasting_pipeline مع تحقق أكبر
 def run_forecasting_pipeline(csv_path):

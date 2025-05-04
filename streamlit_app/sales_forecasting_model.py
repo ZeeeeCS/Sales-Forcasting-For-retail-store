@@ -139,6 +139,9 @@ def train_lstm(train_df):
 
 # Forecast Future (Prophet & LSTM)
 def forecast_with_model(model, horizon, start_date, df=None, lstm_model=None, scaler=None):
+    if model is None:
+        raise ValueError("The Prophet model is None. Please ensure the model is trained before forecasting.")
+    
     future = pd.date_range(start=start_date, periods=horizon, freq='D')
     future_df = pd.DataFrame({'ds': future})
     future_df['day_of_week'] = future_df['ds'].dt.dayofweek
@@ -158,8 +161,7 @@ def forecast_with_model(model, horizon, start_date, df=None, lstm_model=None, sc
 
     return forecast_prophet, forecast_lstm
 
-#
-# run_forecasting_pipeline
+# تحديث دالة run_forecasting_pipeline
 def run_forecasting_pipeline(csv_path):
     df = load_and_prepare(csv_path)
     if feedback_available():
@@ -172,6 +174,10 @@ def run_forecasting_pipeline(csv_path):
     with mlflow.start_run():
         mlflow.set_tag("model", "prophet")
         model_prophet = train_prophet(train_df, holidays)
+        
+        if model_prophet is None:
+            raise ValueError("The Prophet model failed to train.")
+        
         forecast_prophet, _ = forecast_with_model(model_prophet, len(test_df), test_df['ds'].min())
 
         rmse, mae, mape = evaluate_forecast(test_df['y'].values, forecast_prophet['yhat'].values, "Prophet")

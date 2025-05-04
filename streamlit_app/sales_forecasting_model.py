@@ -157,7 +157,6 @@ def forecast_with_model(model, horizon, start_date, df=None, lstm_model=None, sc
 
     # LSTM Forecasting
     if lstm_model and scaler:
-        # استخدام البيانات المستقبلية لإنتاج التنبؤات
         future_scaled = scaler.transform(future_df[['ds']].fillna(0))  # استخدم القيم المناسبة هنا 
         forecast_lstm = lstm_model.predict(future_scaled)
     else:

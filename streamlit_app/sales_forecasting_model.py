@@ -110,6 +110,10 @@ def train_prophet(train_df, holidays=None):
     m.add_regressor('month')
     m.add_regressor('is_weekend')
     m.fit(train_df[['ds', 'y', 'day_of_week', 'month', 'is_weekend']])
+    
+    if m is None:
+        raise ValueError("Prophet model training failed.")
+    
     return m
 
 

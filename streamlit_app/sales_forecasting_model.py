@@ -44,11 +44,11 @@ def check_drift_trend(log_file="metrics_log.csv", threshold=20.0, recent=5):
 def load_and_prepare(filepath):
     data = pd.read_csv(filepath)
     data['Date'] = pd.to_datetime(data['Date'])
-    daily_df = data.groupby('Date', as_index=False)['Demand Forecast'].sum()
+    daily_df = data.groupby('Date', as_index=False)['Units Sold'].sum()
     daily_df['day_of_week'] = daily_df['Date'].dt.dayofweek
     daily_df['month'] = daily_df['Date'].dt.month
     daily_df['is_weekend'] = daily_df['day_of_week'].isin([5, 6]).astype(int)
-    daily_df = daily_df.rename(columns={'Date': 'ds', 'Demand Forecast': 'y'})
+    daily_df = daily_df.rename(columns={'Date': 'ds', 'Units Sold': 'y'})
     return daily_df
 
 # ---- Split Data ----

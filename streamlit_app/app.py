@@ -56,10 +56,6 @@ if uploaded_file:
         st.subheader("Model Feedback")
         st.markdown("Upload actuals to help improve the model in future retraining:")
 
-
-        if feedback_ready:
-            st.info("🔄 Feedback file detected — model retraining recommended.")
-
         st.subheader("📘 Past Model Metrics")
         try:
             logs = pd.read_csv("metrics_log.csv")

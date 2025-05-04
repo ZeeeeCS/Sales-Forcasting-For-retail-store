@@ -142,6 +142,7 @@ def train_lstm(train_df):
 
 
 # Forecast Future (Prophet & LSTM)
+# تحديث دالة forecast_with_model
 def forecast_with_model(model, horizon, start_date, df=None, lstm_model=None, scaler=None):
     if model is None:
         raise ValueError("The Prophet model is None. Please ensure the model is trained before forecasting.")
@@ -157,7 +158,9 @@ def forecast_with_model(model, horizon, start_date, df=None, lstm_model=None, sc
 
     # LSTM Forecasting
     if lstm_model and scaler:
-        future_scaled = scaler.transform(future_df[['ds']].fillna(0))  # استخدم القيم المناسبة هنا 
+        # تأكد من تحجيم البيانات بشكل صحيح باستخدام scaler
+        future_scaled = scaler.transform(future_df[['y']].fillna(0))  # استخدم العمود المناسب من البيانات
+        future_scaled = np.reshape(future_scaled, (future_scaled.shape[0], future_scaled.shape[1], 1))  # إعادة تشكيل البيانات للتنبؤ باستخدام LSTM
         forecast_lstm = lstm_model.predict(future_scaled)
     else:
         forecast_lstm = None

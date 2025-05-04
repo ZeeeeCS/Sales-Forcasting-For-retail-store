@@ -24,7 +24,7 @@ if uploaded_file:
         with open(uploaded_path, "wb") as f:
             f.write(uploaded_file.read())
 
-        model, forecast, test_df, mape, drift, persistent_drift= run_forecasting_pipeline()
+        model, forecast, test_df, mape, drift, persistent_drift= run_forecasting_pipeline(csv_path=uploaded_path)
 
         st.success("✅ Forecast Complete!")
 

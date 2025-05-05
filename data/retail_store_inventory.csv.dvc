@@ -1,0 +1,5 @@
+outs:
+- md5: 6a0fa7e36e816816814e984eb137f454
+  size: 6191463
+  hash: md5
+  path: retail_store_inventory.csv

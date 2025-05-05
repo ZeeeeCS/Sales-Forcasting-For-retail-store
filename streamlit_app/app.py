@@ -26,7 +26,6 @@ if uploaded_file:
     ax1.set_title("Prophet: Actual vs Forecast")
     ax1.legend()
     st.pyplot(fig1)
-    st.write("Prophet MAPE:", f"{prophet_mape:.2f}%")
     
     # LSTM Plot
     st.markdown("### LSTM Forecast")

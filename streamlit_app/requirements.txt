@@ -6,3 +6,4 @@ prophet>=1.1.0
 tensorflow>=2.5.0
 holidays>=0.11.3
 mlflow
+dvc

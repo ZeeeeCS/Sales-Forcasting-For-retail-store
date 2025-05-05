@@ -1,0 +1,6 @@
+[core]
+    remote = localremote
+['remote "mygdrive"']
+    url = gdrive://1x2y3zabcXYZ
+['remote "localremote"']
+    url = D:\studying\DEPI\the final DEPI\dvc-remote-storage

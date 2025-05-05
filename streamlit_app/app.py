@@ -3,62 +3,52 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sales_forecasting_model import run_forecasting_pipeline
 
-st.set_page_config(page_title="Sales Forecasting", layout="wide")
-st.title("📈 Sales Forecasting with Prophet")
+st.set_page_config(page_title="Sales Forecast Dashboard", layout="wide")
 
-st.markdown("""
-Upload your sales CSV file (must include `Date` and `Demand Forecast` columns). The app will:
-- Train a Prophet model
-- Forecast future sales
-- Display evaluation metrics and visualizations
-- Detect model drift
-- Log performance metrics
-- Enable feedback loop
-""")
+st.title("📈 Sales Forecasting with LSTM and Prophet")
 
-uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+uploaded_file = st.file_uploader("Upload your sales CSV file", type=["csv"])
 
 if uploaded_file:
-    with st.spinner("Running forecast pipeline..."):
-        uploaded_path = "temp_uploaded_data.csv"
-        with open(uploaded_path, "wb") as f:
-            f.write(uploaded_file.read())
+    with st.spinner("Running forecasting pipeline..."):
+        prophet_model,prophet_forecast,test_df,lstm_model,lstm_preds,lstm_true,dates,lstm_mape,drift,persistent_drift,prophet_mape= run_forecasting_pipeline(uploaded_file)
 
-        model, forecast, test_df, mape, drift, persistent_drift= run_forecasting_pipeline(csv_path=uploaded_path)
 
-        st.success("✅ Forecast Complete!")
+    st.subheader("📊 Forecast Visualizations")
 
-        if persistent_drift:
-            st.error(f"🚨 Persistent Model Drift Detected! MAPE = {mape:.2f}% (last 5 runs above threshold)")
-        elif drift:
-            st.warning(f"⚠️ Model Drift Detected! MAPE = {mape:.2f}% exceeds threshold.")
-        else:
-            st.info(f"📊 Model Performance: MAPE = {mape:.2f}%")
+    # Prophet Plot
+    st.markdown("### Prophet Forecast")
+    fig1, ax1 = plt.subplots()
+    ax1.plot(test_df["ds"], test_df["y"], label="Actual")
+    ax1.plot(prophet_forecast["ds"], prophet_forecast["yhat"], label="Forecast")
+    ax1.set_xlabel("Date")
+    ax1.set_ylabel("Units Sold")
+    ax1.set_title("Prophet: Actual vs Forecast")
+    ax1.legend()
+    st.pyplot(fig1)
+    st.write("Prophet MAPE:", f"{prophet_mape:.2f}%")
+    
+    # LSTM Plot
+    st.markdown("### LSTM Forecast")
+    lstm_forecast_df = pd.DataFrame({"ds": dates, "yhat": lstm_preds.flatten()})
+    lstm_test_df = pd.DataFrame({"ds": dates, "y": lstm_true.flatten()})
+    fig2, ax2 = plt.subplots()
+    ax2.plot(lstm_test_df["ds"], lstm_test_df["y"], label="Actual")
+    ax2.plot(lstm_forecast_df["ds"], lstm_forecast_df["yhat"], label="Forecast")
+    ax2.set_xlabel("Date")
+    ax2.set_ylabel("Units Sold")
+    ax2.set_title("LSTM: Actual vs Forecast")
+    ax2.legend()
+    st.pyplot(fig2)
 
-        st.subheader("Forecast vs Actual (Test Data)")
-        fig, ax = plt.subplots(figsize=(12, 5))
-        ax.plot(test_df['ds'], test_df['y'], label='Actual', color='black')
-        forecast_filtered = forecast[forecast['ds'].isin(test_df['ds'])]
-        ax.plot(forecast_filtered['ds'], forecast_filtered['yhat'], label='Forecast', color='blue')
-        ax.fill_between(forecast_filtered['ds'], forecast_filtered['yhat_lower'], forecast_filtered['yhat_upper'], color='lightblue', alpha=0.4)
-        ax.set_title("Forecast vs Actual")
-        ax.legend()
-        st.pyplot(fig)
+    # Drift Detection Results
+    st.subheader("🚨 Drift Detection")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Prophet MAPE", f"{prophet_mape:.2f}%")
+    with col2:
+        st.metric("LSTM MAPE", f"{lstm_mape:.2f}%", delta="Drift" if lstm_drift else "Stable")
 
-        st.subheader("Forecast Components")
-        st.pyplot(model.plot_components(forecast))
-
-        st.subheader("Raw Forecast Data")
-        st.dataframe(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(30))
-
-        st.download_button("Download Forecast as CSV", forecast.to_csv(index=False), file_name="forecast_output.csv")
-
-        st.subheader("Model Feedback")
-        st.markdown("Upload actuals to help improve the model in future retraining:")
-
-        st.subheader("📘 Past Model Metrics")
-        try:
-            logs = pd.read_csv("metrics_log.csv")
-            st.dataframe(logs.tail(10))
-        except FileNotFoundError:
-            st.info("No logs yet. Upload data to start tracking.")
+    st.write("📌 **Drift Status**")
+    st.write(f"**LSTM Drift:** {'Detected' if lstm_drift else 'Not Detected'}")
+    st.write(f"**LSTM Persistent Drift:** {'Yes' if lstm_persistent_drift else 'No'}")

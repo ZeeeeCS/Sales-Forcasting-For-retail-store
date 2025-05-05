@@ -47,8 +47,8 @@ if uploaded_file:
     with col1:
         st.metric("Prophet MAPE", f"{prophet_mape:.2f}%")
     with col2:
-        st.metric("LSTM MAPE", f"{lstm_mape:.2f}%", delta="Drift" if lstm_drift else "Stable")
+        st.metric("LSTM MAPE", f"{lstm_mape:.2f}%", delta="Drift")
 
     st.write("📌 **Drift Status**")
-    st.write(f"**LSTM Drift:** {'Detected' if lstm_drift else 'Not Detected'}")
-    st.write(f"**LSTM Persistent Drift:** {'Yes' if lstm_persistent_drift else 'No'}")
+    st.write(f"**LSTM Persistent Drift:** {'Yes' if persistent_drift else 'No'}")
+    

@@ -442,6 +442,3 @@ def run_forecasting_pipeline(csv_path):
         logging.info(f"Forecasting pipeline finished. Summary: {results_summary}")
 
     return results_summary
-
-if __name__ == "__main__":
-    pass

@@ -13,7 +13,7 @@ import mlflow.keras
 from prophet import Prophet
 from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 
-# --- Evaluation ---
+# Evaluation
 def mean_absolute_percentage_error(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     y_true = np.where(y_true == 0, 1e-6, y_true) # Avoid division by zero
@@ -37,7 +37,7 @@ def log_metrics_to_csv(date, rmse, mae, mape, model_type, log_file="metrics_log.
         row.to_csv(log_file, index=False)
 
 
-# --- Drift Detection ---
+# Drift Detection
 def check_drift(mape, threshold=20.0):
     """Checks if the current MAPE exceeds a threshold."""
     drift_detected = mape > threshold
@@ -53,7 +53,7 @@ def check_drift_trend(log_file="metrics_log.csv", model_type="LSTM", threshold=2
             persistent_drift = all(m > threshold for m in recent_mape)
     return persistent_drift
 
-# --- Data Prep ---
+# Data Prep
 def load_and_prepare(filepath):
     """Loads data, aggregates by date, renames columns, and sets index."""
     df = pd.read_csv(filepath)
@@ -73,7 +73,7 @@ def create_sequences(data, seq_len):
         y.append(data[i+seq_len])
     return np.array(x), np.array(y)
 
-# --- Prophet Model ---
+# Prophet Model 
 def run_prophet_model(df):
     df_prophet = df.reset_index().copy()
 
@@ -110,7 +110,7 @@ def run_prophet_model(df):
     rmse, mae, mape = evaluate_forecast(y_true, y_pred)
 
     # Log to CSV
-    log_metrics(test_df['ds'].max(), rmse, mae, mape, "Prophet")
+    log_metrics_to_csv(test_df['ds'].max(), rmse, mae, mape, "Prophet")
     mlflow.log_metrics({"rmse_prophet": rmse, "mae_prophet": mae, "mape_prophet": mape})
     print(f"Original Prophet Eval: RMSE={rmse:.2f}, MAE={mae:.2f}, MAPE={mape:.2f}%")
     return model, forecast, test_df, mape
@@ -175,11 +175,11 @@ def run_prophet_model_with_hyperparams(df, prophet_params):
     })
     mlflow.prophet.log_model(model, "prophet_model_hyperparam")
 
-    return model, forecast, test_df, rmse, mae, mape
+    return model, forecast, test_df, mape
 
 # --- LSTM Model ---
 def run_lstm_model(df):
-    df_lstm = df[['y']].copy()
+    df_lstm = df.copy()
 
     # Scale Data
     scaler = MinMaxScaler()
@@ -214,11 +214,11 @@ def run_lstm_model(df):
     rmse, mae, mape = evaluate_forecast(y_test_inv.flatten(), preds_inv.flatten())
     print(f"Original LSTM Eval: RMSE={rmse:.2f}, MAE={mae:.2f}, MAPE={mape:.2f}%")
 
-    log_metrics(df_lstm.index[-1], rmse, mae, mape, "LSTM")
+    log_metrics_to_csv(df_lstm.index[-1], rmse, mae, mape, "LSTM")
     mlflow.log_metrics({"rmse_lstm": rmse, "mae_lstm": mae, "mape_lstm": mape})
     mlflow.keras.log_model(model, "lstm_model")
 
-    return model, preds_inv.flatten(), y_test_inv.flatten(), df_lstm.index[-len(preds_inv):], rmse, mae, mape
+    return model, preds_inv.flatten(), y_test_inv.flatten(), df_lstm.index[-len(preds_inv):], mape
 
 
 
@@ -324,7 +324,7 @@ def run_lstm_model_with_hyperparams(df, lstm_params):
 
     mlflow.keras.log_model(model, "lstm_model_hyperparam")
 
-    return model, preds_inv.flatten(), y_test_inv.flatten(), test_dates, rmse, mae, mape
+    return model, preds_inv.flatten(), y_test_inv.flatten(), test_dates, mape
 
 # --- Main Entrypoint ---
 def run_forecasting_pipeline(csv_path):
@@ -334,7 +334,7 @@ def run_forecasting_pipeline(csv_path):
         run_id = mlflow.active_run().info.run_uuid
         print(f"MLflow Run ID: {run_id}")
 
-        # --- Load Data ---
+        # Load Data
         df = load_and_prepare(csv_path)
         if df is None:
             print("Data loading failed.")
@@ -362,7 +362,6 @@ def run_forecasting_pipeline(csv_path):
             'epochs': 50,
             'batch_size': 32
         }
-        lstm_seq_len_to_run = 14
 
                 # --- Run New Models WITH Hyperparameters ---
         print("\n Running Models with Specific Hyperparameters")
@@ -370,24 +369,22 @@ def run_forecasting_pipeline(csv_path):
           df,
           prophet_params=prophet_hyperparams_to_run
         )
+        prophet_mape_hp = prophet_mape_hp if prophet_mape_hp is not None else float('inf')
+
         lstm_model_hp, lstm_preds_hp, lstm_true_hp, lstm_dates_hp, lstm_mape_hp = run_lstm_model_with_hyperparams(
             df,
-            seq_len=lstm_seq_len_to_run,
             lstm_params=lstm_hyperparams_to_run
         )
-
-        # handle None cases and fallback to inf
-        prophet_hp_mape = prophet_mape_hp if prophet_mape_hp is not None else float('inf')
-        lstm_hp_mape = lstm_mape_hp if lstm_mape_hp is not None else float('inf')
+        lstm_mape_hp = lstm_mape_hp if lstm_mape_hp is not None else float('inf')
 
         # Drift Detection (Based on the LSTM run WITH hyperparameters)
         print("\n Drift Detection (on Hyperparam LSTM)")
-        drift = False
-        persistent_drift = False
+        drift_hp = False
+        persistent_drift_hp = False
 
-        if lstm_hp_mape != float('inf'):
+        if lstm_mape_hp != float('inf'):
             drift_threshold = 20.0
-            drift = check_drift(lstm_hp_mape, threshold=drift_threshold)
+            drift_hp = check_drift(lstm_mape_hp, threshold=drift_threshold)
             # Use the specific model_type logged by the hyperparameter function
             persistent_drift = check_drift_trend(model_type="LSTM_Hyperparam", threshold=drift_threshold, recent=5)
             print(f"Drift detected: {drift}, Persistent drift: {persistent_drift}")
@@ -402,8 +399,8 @@ def run_forecasting_pipeline(csv_path):
         results_summary = {
             "prophet_original_mape": prophet_mape,
             "lstm_original_mape": lstm_mape,
-            "prophet_hyperparam_mape": prophet_hp_mape,
-            "lstm_hyperparam_mape": lstm_hp_mape,
+            "prophet_hyperparam_mape": prophet_mape_hp,
+            "lstm_hyperparam_mape": lstm_mape_hp,
             "drift_detected_on_hp_lstm": drift,
             "persistent_drift_on_hp_lstm": persistent_drift,
         }

@@ -406,7 +406,3 @@ def run_forecasting_pipeline(csv_path):
         }
     # Return the summary dictionary
     return results_summary
-
-if __name__ == "__main__":
-    # Main Function
-    pass

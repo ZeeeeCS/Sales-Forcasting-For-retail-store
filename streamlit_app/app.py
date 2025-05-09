@@ -4,9 +4,11 @@ import pandas as pd
 import mlflow
 import os
 import subprocess
+import signal
 from pyngrok import ngrok, conf
 from time import sleep
-from sales_forecasting_model_with_logging import run_forecasting_pipeline  # Import your forecasting pipeline function
+from sales_forecasting_model_with_logging import run_forecasting_pipeline
+
 # Configuration
 MLFLOW_DIR = os.path.abspath("./mlruns")
 MLFLOW_PORT = 5000
@@ -20,31 +22,55 @@ mlflow.set_tracking_uri(f"file://{MLFLOW_DIR}")
 
 def start_mlflow():
     """Start MLflow UI as background process"""
-    return subprocess.Popen(
-        ["mlflow", "ui", "--port", str(MLFLOW_PORT), "--backend-store-uri", MLFLOW_DIR],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
+    try:
+        return subprocess.Popen(
+            ["mlflow", "ui", "--port", str(MLFLOW_PORT), "--backend-store-uri", MLFLOW_DIR],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            preexec_fn=os.setsid
+        )
+    except Exception as e:
+        st.error(f"Failed to start MLflow: {str(e)}")
+        return None
 
 def start_ngrok_tunnel(port):
-    """Start ngrok tunnel"""
-    conf.get_default().auth_token = NGROK_AUTH_TOKEN
-    return ngrok.connect(port, "http")
+    """Start ngrok tunnel with error handling"""
+    try:
+        conf.get_default().config_path = "./ngrok.yml"
+        conf.get_default().auth_token = NGROK_AUTH_TOKEN
+        return ngrok.connect(port, "http")
+    except Exception as e:
+        st.error(f"Failed to start ngrok tunnel: {str(e)}")
+        return None
+
+def cleanup():
+    """Clean up background processes"""
+    if "mlflow_process" in st.session_state and st.session_state.mlflow_process:
+        os.killpg(os.getpgid(st.session_state.mlflow_process.pid), signal.SIGTERM)
+    if "ngrok_tunnel" in st.session_state and st.session_state.ngrok_tunnel:
+        ngrok.kill()
 
 def main():
     st.title("🔮 Sales Forecasting Dashboard")
     
-    # Start services
-    if "mlflow_process" not in st.session_state:
+    # Initialize services
+    if "services_initialized" not in st.session_state:
         st.session_state.mlflow_process = start_mlflow()
-        sleep(2)  # Wait for MLflow to start
+        sleep(5)  # Give MLflow time to start
         
-    if "ngrok_tunnel" not in st.session_state:
-        st.session_state.ngrok_tunnel = start_ngrok_tunnel(MLFLOW_PORT)
-        public_url = st.session_state.ngrok_tunnel.public_url
-        st.markdown(f"""
-        **MLflow UI**: [Open Tracking Dashboard]({public_url})
-        """)
+        if st.session_state.mlflow_process:
+            st.session_state.ngrok_tunnel = start_ngrok_tunnel(MLFLOW_PORT)
+            if st.session_state.ngrok_tunnel:
+                public_url = st.session_state.ngrok_tunnel.public_url
+                st.markdown(f"""
+                **MLflow UI**: [Open Tracking Dashboard]({public_url})
+                """)
+            else:
+                st.warning("Could not establish ngrok tunnel")
+        else:
+            st.warning("MLflow tracking disabled - results not logged")
+        
+        st.session_state.services_initialized = True
 
     # Sidebar controls
     with st.sidebar:
@@ -109,4 +135,7 @@ def main():
         st.warning("⚠️ Please upload a CSV file first!")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        cleanup()

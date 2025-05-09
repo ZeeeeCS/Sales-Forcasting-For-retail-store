@@ -1,40 +1,55 @@
 # app.py
 import streamlit as st
 import pandas as pd
-from sales_forecasting_model_with_logging import run_forecasting_pipeline
 import mlflow
+import os
+import subprocess
 from pyngrok import ngrok, conf
-from IPython import get_ipython
+from time import sleep
 
-conf.get_default().auth_token = "2wsCDg9OuRuTH6byPWcr3berIkS_bjXjwzFDutiN3Fvxarm1"
+# Configuration
+MLFLOW_DIR = os.path.abspath("./mlruns")
+MLFLOW_PORT = 5000
+NGROK_AUTH_TOKEN = "2wsCDg9OuRuTH6byPWcr3berIkS_bjXjwzFDutiN3Fvxarm1"  # Replace with your actual token
 
-# Start MLflow
-mlflow.set_tracking_uri("file:/content/mlruns")
-get_ipython().system_raw("mlflow ui --port 5000 &")
+# Setup directories
+os.makedirs(MLFLOW_DIR, exist_ok=True)
 
-# Get public link using ngrok
-public_url = ngrok.connect(5000)
+# Configure MLflow
+mlflow.set_tracking_uri(f"file://{MLFLOW_DIR}")
 
-# Configure MLflow tracking URI (adjust if needed)
-mlflow.set_tracking_uri("http://localhost:5000")
+def start_mlflow():
+    """Start MLflow UI as background process"""
+    return subprocess.Popen(
+        ["mlflow", "ui", "--port", str(MLFLOW_PORT), "--backend-store-uri", MLFLOW_DIR],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+
+def start_ngrok_tunnel(port):
+    """Start ngrok tunnel"""
+    conf.get_default().auth_token = NGROK_AUTH_TOKEN
+    return ngrok.connect(port, "http")
 
 def main():
     st.title("🔮 Sales Forecasting Dashboard")
-    st.markdown("""
-    This app runs sales forecasting using both Prophet and LSTM models, 
-    tracks experiments with MLflow, and monitors for data drift.
-    """)
+    
+    # Start services
+    if "mlflow_process" not in st.session_state:
+        st.session_state.mlflow_process = start_mlflow()
+        sleep(2)  # Wait for MLflow to start
+        
+    if "ngrok_tunnel" not in st.session_state:
+        st.session_state.ngrok_tunnel = start_ngrok_tunnel(MLFLOW_PORT)
+        public_url = st.session_state.ngrok_tunnel.public_url
+        st.markdown(f"""
+        **MLflow UI**: [Open Tracking Dashboard]({public_url})
+        """)
 
     # Sidebar controls
     with st.sidebar:
         st.header("⚙️ Settings")
         uploaded_file = st.file_uploader("Upload CSV data", type=["csv"])
-        drift_threshold = st.number_input("Drift Threshold (MAPE %)", 
-                                        min_value=5.0, max_value=100.0, 
-                                        value=20.0, step=1.0)
-        recent_checks = st.number_input("Persistent Drift Checks", 
-                                      min_value=3, max_value=10, 
-                                      value=5, step=1)
         run_button = st.button("Run Forecasting Pipeline")
 
     # Main content area
@@ -48,6 +63,7 @@ def main():
 
     if run_button and uploaded_file is not None:
         with st.spinner("🚀 Running forecasting pipeline..."):
+            temp_path = None
             try:
                 # Save uploaded file temporarily
                 temp_path = f"./temp_{uploaded_file.name}"
@@ -55,60 +71,49 @@ def main():
                     f.write(uploaded_file.getbuffer())
                 
                 # Run pipeline
-                results = run_forecasting_pipeline(temp_path)
+                with mlflow.start_run():
+                    results = run_forecasting_pipeline(temp_path)
                 
                 if results:
                     st.success("✅ Pipeline completed successfully!")
                     st.subheader("📈 Results Summary")
 
-                    # Create columns for metrics display
+                    # Metrics display
                     col1, col2 = st.columns(2)
-                    
                     with col1:
-                        st.metric("Prophet (Original) MAPE", 
-                                f"{results['prophet_original_mape']:.2f}%")
-                        st.metric("LSTM (Original) MAPE", 
-                                f"{results['lstm_original_mape']:.2f}%")
-                    
+                        st.metric("Prophet (Original) MAPE", f"{results.get('prophet_original_mape', 0):.2f}%")
+                        st.metric("LSTM (Original) MAPE", f"{results.get('lstm_original_mape', 0):.2f}%")
                     with col2:
-                        st.metric("Prophet (Tuned) MAPE", 
-                                f"{results['prophet_hyperparam_mape']:.2f}%")
-                        st.metric("LSTM (Tuned) MAPE", 
-                                f"{results['lstm_hyperparam_mape']:.2f}%")
+                        st.metric("Prophet (Tuned) MAPE", f"{results.get('prophet_hyperparam_mape', 0):.2f}%")
+                        st.metric("LSTM (Tuned) MAPE", f"{results.get('lstm_hyperparam_mape', 0):.2f}%")
 
-                    # Drift detection section
+                    # Drift detection
                     st.subheader("🚨 Drift Detection")
-                    drift_col1, drift_col2 = st.columns(2)
-                    
-                    with drift_col1:
-                        st.write("**Original Models**")
-                        st.markdown(f"""
-                        - Immediate Drift: {'⚠️ Detected' if results['drift_original_lstm'] else '✅ Normal'}
-                        - Persistent Drift: {'🔴 Detected' if results['persistent_drift_original_lstm'] else '🟢 Normal'}
-                        """)
-                    
-                    with drift_col2:
-                        st.write("**Tuned Models**")
-                        st.markdown(f"""
-                        - Immediate Drift: {'⚠️ Detected' if results['drift_detected_on_hp_lstm'] else '✅ Normal'}
-                        - Persistent Drift: {'🔴 Detected' if results['persistent_drift_on_hp_lstm'] else '🟢 Normal'}
-                        """)
-
-                    # MLflow info
-                    st.subheader("🔍 MLflow Tracking")
-                    st.write(f"Run ID: `{results['mlflow_run_id']}`")
-                    st.markdown("[Open MLflow UI](http://localhost:5000) to see detailed metrics and models")
+                    cols = st.columns(2)
+                    with cols[0]:
+                        st.markdown("**Original Models**")
+                        st.write(f"Immediate Drift: {'⚠️' if results.get('drift_original_lstm') else '✅'}")
+                        st.write(f"Persistent Drift: {'🔴' if results.get('persistent_drift_original_lstm') else '🟢'}")
+                    with cols[1]:
+                        st.markdown("**Tuned Models**")
+                        st.write(f"Immediate Drift: {'⚠️' if results.get('drift_detected_on_hp_lstm') else '✅'}")
+                        st.write(f"Persistent Drift: {'🔴' if results.get('persistent_drift_on_hp_lstm') else '🟢'}")
 
             except Exception as e:
                 st.error(f"❌ Pipeline failed: {e}")
             finally:
-                # Clean up temporary file
-                import os
-                if os.path.exists(temp_path):
+                if temp_path and os.path.exists(temp_path):
                     os.remove(temp_path)
 
     elif run_button and not uploaded_file:
         st.warning("⚠️ Please upload a CSV file first!")
+
+# Cleanup when Streamlit exits
+if not st._is_running_with_streamlit:
+    if "mlflow_process" in st.session_state:
+        st.session_state.mlflow_process.terminate()
+    if "ngrok_tunnel" in st.session_state:
+        ngrok.kill()
 
 if __name__ == "__main__":
     main()

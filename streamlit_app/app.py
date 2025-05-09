@@ -4,6 +4,8 @@ import pandas as pd
 from sales_forecasting_model_with_logging import run_forecasting_pipeline
 import mlflow
 from pyngrok import ngrok, conf
+from IPython import get_ipython
+
 conf.get_default().auth_token = "YOUR_AUTHTOKEN"
 
 # Start MLflow

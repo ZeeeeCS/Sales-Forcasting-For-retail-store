@@ -5,16 +5,19 @@ import os
 from pathlib import Path
 from sales_forecasting_model_with_logging import run_forecasting_pipeline
 
-# Configure MLflow with SQLite backend
-MLFLOW_DIR = 'D:\studying\DEPI\the final DEPI\Sales-Forcasting-For-retail-store\mlflow_local'
+# Configure MLflow with SQLite backend (raw string for Windows paths)
+MLFLOW_DIR = r'D:\studying\DEPI\the final DEPI\Sales-Forcasting-For-retail-store\mlflow_local'
 mlflow_enabled = True
 
 try:
     import mlflow
     # Create MLflow directory structure
     Path(MLFLOW_DIR).mkdir(parents=True, exist_ok=True)
-    mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DIR}/mlflow.db")
-    mlflow.set_registry_uri(f"file://{MLFLOW_DIR}/artifacts")
+    # Convert Windows paths to SQLite-compatible format
+    db_path = f"{MLFLOW_DIR}/mlflow.db".replace('\\', '/')
+    artifact_path = f"{MLFLOW_DIR}/artifacts".replace('\\', '/')
+    mlflow.set_tracking_uri(f"sqlite:///{db_path}")
+    mlflow.set_registry_uri(f"file://{artifact_path}")
 except ImportError:
     mlflow_enabled = False
 except Exception as e:
@@ -103,10 +106,9 @@ def main():
                     # MLflow info if enabled
                     if mlflow_enabled:
                         st.subheader("🔍 MLflow Tracking")
-                        st.write(f"Local storage: `{MLFLOW_DIR}`")
                         st.markdown(f"""
-                        - Database: `{MLFLOW_DIR}mlflow.db`
-                        - Artifacts: `{MLFLOW_DIR}artifacts/`
+                        - **Database Path**: `{db_path}`
+                        - **Artifact Path**: `{artifact_path}`
                         """)
 
             except Exception as e:

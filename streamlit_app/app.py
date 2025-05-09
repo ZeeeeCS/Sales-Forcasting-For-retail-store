@@ -6,7 +6,7 @@ from pathlib import Path
 from sales_forecasting_model_with_logging import run_forecasting_pipeline
 
 # Configure MLflow with SQLite backend
-MLFLOW_DIR = "./mlflow_local/"
+MLFLOW_DIR = 'D:\studying\DEPI\the final DEPI\Sales-Forcasting-For-retail-store\mlflow_local'
 mlflow_enabled = True
 
 try:

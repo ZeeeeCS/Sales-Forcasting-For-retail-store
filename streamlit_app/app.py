@@ -109,11 +109,4 @@ def main():
         st.warning("⚠️ Please upload a CSV file first!")
 
 if __name__ == "__main__":
-    try:
-        main()
-    finally:
-        # Cleanup when script exits
-        if "mlflow_process" in st.session_state:
-            st.session_state.mlflow_process.terminate()
-        if "ngrok_tunnel" in st.session_state:
-            ngrok.kill()
+    main()

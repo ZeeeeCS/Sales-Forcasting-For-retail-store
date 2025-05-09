@@ -6,7 +6,7 @@ import os
 import subprocess
 from pyngrok import ngrok, conf
 from time import sleep
-
+from sales_forecasting_model_with_logging import run_forecasting_pipeline  # Import your forecasting pipeline function
 # Configuration
 MLFLOW_DIR = os.path.abspath("./mlruns")
 MLFLOW_PORT = 5000

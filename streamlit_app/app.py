@@ -6,7 +6,7 @@ import mlflow
 from pyngrok import ngrok, conf
 from IPython import get_ipython
 
-conf.get_default().auth_token = "YOUR_AUTHTOKEN"
+conf.get_default().auth_token = "2wsCDg9OuRuTH6byPWcr3berIkS_bjXjwzFDutiN3Fvxarm1"
 
 # Start MLflow
 mlflow.set_tracking_uri("file:/content/mlruns")

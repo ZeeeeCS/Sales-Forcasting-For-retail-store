@@ -68,29 +68,41 @@ def main():
                 
                 # Run pipeline
                 results = run_forecasting_pipeline(temp_path) if mlflow_enabled else None
-                results = results or {
-                    "prophet_original_mape": 0.0,
-                    "lstm_original_mape": 0.0,
-                    "prophet_hyperparam_mape": 0.0,
-                    "lstm_hyperparam_mape": 0.0,
-                    "drift_original_lstm": False,
-                    "persistent_drift_original_lstm": False,
-                    "drift_detected_on_hp_lstm": False,
-                    "persistent_drift_on_hp_lstm": False,
-                    "mlflow_run_id": "N/A"
-                }
                 
+                # Handle case when pipeline returns None
+                if results is None:
+                    st.error("Pipeline returned no results")
+                    return
+                
+                # Ensure all required keys exist
+                required_keys = [
+                    'prophet_original_mape', 'lstm_original_mape',
+                    'prophet_hyperparam_mape', 'lstm_hyperparam_mape',
+                    'drift_original_lstm', 'persistent_drift_original_lstm',
+                    'drift_detected_on_hp_lstm', 'persistent_drift_on_hp_lstm',
+                    'mlflow_run_id'
+                ]
+                
+                for key in required_keys:
+                    if key not in results:
+                        st.error(f"Missing expected result key: {key}")
+                        return
+
                 st.success("✅ Pipeline completed successfully!")
                 st.subheader("📈 Results Summary")
 
                 # Results columns
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.metric("Prophet (Original) MAPE", f"{results['prophet_original_mape']:.2f}%")
-                    st.metric("LSTM (Original) MAPE", f"{results['lstm_original_mape']:.2f}%")
+                    st.metric("Prophet (Original) MAPE", 
+                             f"{results['prophet_original_mape']:.2f}%")
+                    st.metric("LSTM (Original) MAPE", 
+                             f"{results['lstm_original_mape']:.2f}%")
                 with col2:
-                    st.metric("Prophet (Tuned) MAPE", f"{results['prophet_hyperparam_mape']:.2f}%")
-                    st.metric("LSTM (Tuned) MAPE", f"{results['lstm_hyperparam_mape']:.2f}%")
+                    st.metric("Prophet (Tuned) MAPE", 
+                             f"{results['prophet_hyperparam_mape']:.2f}%")
+                    st.metric("LSTM (Tuned) MAPE", 
+                             f"{results['lstm_hyperparam_mape']:.2f}%")
 
                 # Drift detection section
                 st.subheader("🚨 Drift Detection")

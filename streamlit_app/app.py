@@ -10,7 +10,7 @@ from sales_forecasting_model_with_logging import run_forecasting_pipeline  # Imp
 # Configuration
 MLFLOW_DIR = os.path.abspath("./mlruns")
 MLFLOW_PORT = 5000
-NGROK_AUTH_TOKEN = "2wsCDg9OuRuTH6byPWcr3berIkS_bjXjwzFDutiN3Fvxarm1"  # Replace with your actual token
+NGROK_AUTH_TOKEN = "YOUR_NGROK_AUTH_TOKEN"  # Replace with your actual token
 
 # Setup directories
 os.makedirs(MLFLOW_DIR, exist_ok=True)
@@ -108,12 +108,12 @@ def main():
     elif run_button and not uploaded_file:
         st.warning("⚠️ Please upload a CSV file first!")
 
-# Cleanup when Streamlit exits
-if not st._is_running_with_streamlit:
-    if "mlflow_process" in st.session_state:
-        st.session_state.mlflow_process.terminate()
-    if "ngrok_tunnel" in st.session_state:
-        ngrok.kill()
-
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        # Cleanup when script exits
+        if "mlflow_process" in st.session_state:
+            st.session_state.mlflow_process.terminate()
+        if "ngrok_tunnel" in st.session_state:
+            ngrok.kill()

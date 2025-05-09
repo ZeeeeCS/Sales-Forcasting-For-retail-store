@@ -11,7 +11,7 @@ from sales_forecasting_model_with_logging import run_forecasting_pipeline
 
 # Configuration
 MLFLOW_DIR = os.path.abspath("./mlruns")
-MLFLOW_PORT = 5000
+MLFLOW_PORT = 8080
 NGROK_AUTH_TOKEN = "2wsCDg9OuRuTH6byPWcr3berIkS_bjXjwzFDutiN3Fvxarm1"  # Replace with your actual token
 
 # Setup directories

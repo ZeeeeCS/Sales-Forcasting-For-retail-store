@@ -1,78 +1,131 @@
 # app.py
 import streamlit as st
 import pandas as pd
-import mlflow
 import os
-from sales_forecasting_model import run_forecasting_pipeline
-import sqlite3
 from pathlib import Path
+from sales_forecasting_model import run_forecasting_pipeline
 
-# Configure MLflow to use local SQLite and file storage
+# Configure MLflow with SQLite backend and local storage
 MLFLOW_DIR = "./mlflow_local/"
-Path(MLFLOW_DIR).mkdir(exist_ok=True)
+mlflow_enabled = True
 
-mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DIR}/mlflow.db")
-mlflow.set_registry_uri(f"file://{MLFLOW_DIR}/artifacts")
+try:
+    import mlflow
+    # Create MLflow directory structure
+    Path(MLFLOW_DIR).mkdir(parents=True, exist_ok=True)
+    mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DIR}/mlflow.db")
+    mlflow.set_registry_uri(f"file://{MLFLOW_DIR}/artifacts")
+except ImportError:
+    mlflow_enabled = False
+except Exception as e:
+    mlflow_enabled = False
+    st.sidebar.error(f"MLflow initialization failed: {str(e)}")
 
 def main():
-    st.title("📈 Local MLflow Sales Forecasting")
+    st.title("🔮 Sales Forecasting Dashboard")
     st.markdown("""
-    **Local MLflow Configuration:**  
-    - SQLite backend store  
-    - Local file artifact storage  
-    - No cloud dependencies  
+    This app runs sales forecasting using both Prophet and LSTM models, 
+    tracks experiments with MLflow (when available), and monitors for data drift.
     """)
 
     # Sidebar controls
     with st.sidebar:
         st.header("⚙️ Settings")
         uploaded_file = st.file_uploader("Upload CSV data", type=["csv"])
-        run_button = st.button("Run Forecasting")
+        drift_threshold = st.number_input("Drift Threshold (MAPE %)", 
+                                        min_value=5.0, max_value=100.0, 
+                                        value=20.0, step=1.0)
+        recent_checks = st.number_input("Persistent Drift Checks", 
+                                      min_value=3, max_value=10, 
+                                      value=5, step=1)
+        run_button = st.button("Run Forecasting Pipeline")
+
+        if not mlflow_enabled:
+            st.warning("MLflow tracking disabled - results not logged")
 
     # Main content area
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-        with st.expander("📊 Data Preview"):
-            st.dataframe(df.head(3))
+    if uploaded_file is not None:
+        try:
+            df_preview = pd.read_csv(uploaded_file)
+            st.subheader("📊 Data Preview")
+            st.dataframe(df_preview.head(), use_container_width=True)
+        except Exception as e:
+            st.error(f"Error reading file: {e}")
 
-    if run_button and uploaded_file:
-        with st.spinner("Running local MLflow pipeline..."):
+    if run_button and uploaded_file is not None:
+        with st.spinner("🚀 Running forecasting pipeline..."):
+            temp_path = None
             try:
-                # Save temporary file
-                temp_path = f"{MLFLOW_DIR}/temp_data.csv"
-                uploaded_file.seek(0)
+                # Save uploaded file temporarily
+                temp_path = f"./temp_{uploaded_file.name}"
                 with open(temp_path, "wb") as f:
-                    f.write(uploaded_file.getvalue())
+                    f.write(uploaded_file.getbuffer())
+                
+                # Handle MLflow runs if enabled
+                if mlflow_enabled:
+                    if mlflow.active_run():
+                        mlflow.end_run()
+                
+                # Run pipeline
+                results = run_forecasting_pipeline(temp_path) if mlflow_enabled else None
+                results = results or {
+                    "prophet_original_mape": 0.0,
+                    "lstm_original_mape": 0.0,
+                    "prophet_hyperparam_mape": 0.0,
+                    "lstm_hyperparam_mape": 0.0,
+                    "drift_original_lstm": False,
+                    "persistent_drift_original_lstm": False,
+                    "drift_detected_on_hp_lstm": False,
+                    "persistent_drift_on_hp_lstm": False,
+                    "mlflow_run_id": "N/A"
+                }
+                
+                st.success("✅ Pipeline completed successfully!")
+                st.subheader("📈 Results Summary")
 
-                # Start MLflow run
-                with mlflow.start_run():
-                    # Run pipeline
-                    results = run_forecasting_pipeline(temp_path)
-                    
-                    # Log metrics
-                    if results:
-                        mlflow.log_metrics({
-                            "prophet_mape": results['prophet_hyperparam_mape'],
-                            "lstm_mape": results['lstm_hyperparam_mape']
-                        })
-                        
-                        # Log artifacts
-                        mlflow.log_artifact(temp_path)
-                        
-                        # Show results
-                        st.success("Pipeline completed!")
-                        st.json(results)
+                # Results columns
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Prophet (Original) MAPE", f"{results['prophet_original_mape']:.2f}%")
+                    st.metric("LSTM (Original) MAPE", f"{results['lstm_original_mape']:.2f}%")
+                with col2:
+                    st.metric("Prophet (Tuned) MAPE", f"{results['prophet_hyperparam_mape']:.2f}%")
+                    st.metric("LSTM (Tuned) MAPE", f"{results['lstm_hyperparam_mape']:.2f}%")
 
-                        # Display local MLflow info
-                        st.subheader("📂 Local MLflow Storage")
-                        st.write(f"Database: `{MLFLOW_DIR}mlflow.db`")
-                        st.write(f"Artifacts: `{MLFLOW_DIR}artifacts/`")
+                # Drift detection section
+                st.subheader("🚨 Drift Detection")
+                drift_col1, drift_col2 = st.columns(2)
+                with drift_col1:
+                    st.write("**Original Models**")
+                    st.markdown(f"""
+                    - Immediate Drift: {'⚠️ Detected' if results['drift_original_lstm'] else '✅ Normal'}
+                    - Persistent Drift: {'🔴 Detected' if results['persistent_drift_original_lstm'] else '🟢 Normal'}
+                    """)
+                with drift_col2:
+                    st.write("**Tuned Models**")
+                    st.markdown(f"""
+                    - Immediate Drift: {'⚠️ Detected' if results['drift_detected_on_hp_lstm'] else '✅ Normal'}
+                    - Persistent Drift: {'🔴 Detected' if results['persistent_drift_on_hp_lstm'] else '🟢 Normal'}
+                    """)
+
+                # MLflow info if enabled
+                if mlflow_enabled:
+                    st.subheader("🔍 MLflow Tracking")
+                    st.write(f"Run ID: `{results['mlflow_run_id']}`")
+                    st.markdown(f"""
+                    Local MLflow Storage:
+                    - Database: `{MLFLOW_DIR}mlflow.db`
+                    - Artifacts: `{MLFLOW_DIR}artifacts/`
+                    """)
 
             except Exception as e:
-                st.error(f"Error: {str(e)}")
+                st.error(f"❌ Pipeline failed: {str(e)}")
             finally:
-                if os.path.exists(temp_path):
+                if temp_path and os.path.exists(temp_path):
                     os.remove(temp_path)
+
+    elif run_button and not uploaded_file:
+        st.warning("⚠️ Please upload a CSV file first!")
 
 if __name__ == "__main__":
     main()

@@ -7,7 +7,7 @@ import time # For timestamp
 
 # --- Import the pipeline function ---
 # Option 1: If you renamed the file
-from forecasting_pipeline import run_forecasting_pipeline
+from sales_forecasting_model_with_logging import run_forecasting_pipeline
 # Option 2: If you kept the original name
 # from sales_forecasting_model_with_logging import run_forecasting_pipeline
 # ---

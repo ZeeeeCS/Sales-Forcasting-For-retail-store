@@ -580,7 +580,7 @@ def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperime
 if __name__ == '__main__':
     # --- ngrok Configuration ---
     # !!! CRITICAL: ENSURE YOUR NGROK AUTHTOKEN IS PASTED CORRECTLY HERE !!!
-    NGROK_AUTHTOKEN_FROM_USER = "2weDsVbEApYLM74VmVVBh4hJ1l1_4YfE1Aq7Z4ScPEGdffdEW"  # <--- YOUR ACTUAL TOKEN HERE
+    NGROK_AUTHTOKEN_FROM_USER = "2wsCDg9OuRuTH6byPWcr3berIkS_bjXjwzFDutiN3Fvxarm1"  # <--- YOUR ACTUAL TOKEN HERE
 
     MLFLOW_UI_PORT = 5000 # Port for MLflow UI
 
@@ -588,7 +588,7 @@ if __name__ == '__main__':
     mlflow_ui_process = None
 
     # Check if the user has provided a token
-    if not NGROK_AUTHTOKEN_FROM_USER or NGROK_AUTHTOKEN_FROM_USER == "YOUR_NGROK_AUTHTOKEN_HERE": # Check if it's empty or the placeholder
+    if not NGROK_AUTHTOKEN_FROM_USER or NGROK_AUTHTOKEN_FROM_USER == "2wsCDg9OuRuTH6byPWcr3berIkS_bjXjwzFDutiN3Fvxarm1": # Check if it's empty or the placeholder
         logging.warning("NGROK_AUTHTOKEN_FROM_USER is effectively not set or is the placeholder. ngrok will not be started.")
         print("WARNING: ngrok authtoken is not properly set in the script. MLflow UI will only be accessible locally if you start it manually.")
     else:
@@ -712,7 +712,7 @@ if __name__ == '__main__':
             print("Shutdown complete.")
     else:
         # This block executes if public_url is None (ngrok didn't start or failed)
-        if not NGROK_AUTHTOKEN_FROM_USER or NGROK_AUTHTOKEN_FROM_USER == "YOUR_NGROK_AUTHTOKEN_HERE":
+        if not NGROK_AUTHTOKEN_FROM_USER or NGROK_AUTHTOKEN_FROM_USER == "2wsCDg9OuRuTH6byPWcr3berIkS_bjXjwzFDutiN3Fvxarm1":
             # Message already printed at the beginning
             pass
         else: # Token was provided, but ngrok/UI failed for other reasons

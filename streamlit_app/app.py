@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import sys # To add to sys.path if your model script is in a different directory
 from sales_forecasting_model_with_logging import run_forecasting_pipeline # Your main modeling script, possibly renamed
-
+import mlflow
 st.title("Retail Store Sales Forecaster")
 
 uploaded_file = st.file_uploader("Choose a CSV file for sales data", type="csv")
@@ -46,6 +46,8 @@ if uploaded_file is not None:
             st.success("Forecasting pipeline completed!")
             if "mlflow_run_id" in results_summary:
                 st.info(f"MLflow Run ID for this forecast: {results_summary['mlflow_run_id']}")
+                model_uri = f"runs:/{results_summary['mlflow_run_id']}/model"
+                mlflow.pyfunc.load_model(model_uri)
                 # If you have a publicly accessible MLflow UI, you could construct a link here.
                 # local_mlflow_link = "http://localhost:5000/#/experiments/.../runs/..." # Needs logic
         else:

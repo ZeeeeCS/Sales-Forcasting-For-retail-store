@@ -477,246 +477,145 @@ def run_lstm_model_with_hyperparams(df, lstm_params):
 
 # --- Main Entrypoint ---
 def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperiment"):
-    logging.info(f"Starting forecasting pipeline for: {csv_path}")
-    # mlflow.set_tracking_uri("file:/./mlruns") # Example for local tracking, customize as needed
-    mlflow.set_experiment(experiment_name)
-    logging.info(f"MLflow experiment set to: {experiment_name}")
-    
-    with mlflow.start_run() as run:
-        run_id = run.info.run_uuid
-        mlflow.set_tag("dataset_path", os.path.basename(csv_path)) # Log dataset name as a tag
-        mlflow.log_param("full_data_path", csv_path) # Log full path as param
-        logging.info(f"MLflow Run ID: {run_id} for dataset: {csv_path}")
+    """
+    Runs the full forecasting pipeline for the given data path.
+    Logs results to MLflow and returns a summary dictionary.
+    """
+    logger.info(f"Starting forecasting pipeline for: {csv_path}")
 
-        df = load_and_prepare(csv_path)
-        if df is None or df.empty:
-            logging.error("Data loading failed or data is empty. Aborting pipeline.")
-            mlflow.log_param("pipeline_status", "failed_data_load")
-            return None
-
-        logging.info("\n--- Running Original Models (Base Comparison) ---")
-        _, _, _, prophet_mape = run_prophet_model(df)
-        if prophet_mape is None: prophet_mape = float('inf')
-
-        _, _, _, _, lstm_mape = run_lstm_model(df)
-        if lstm_mape is None: lstm_mape = float('inf')
-
-        # Drift for original LSTM is less critical here, but can be logged
-        # drift_original_lstm = check_drift(lstm_mape) 
-        # persistent_drift_original_lstm = check_drift_trend(model_type="LSTM_Original")
-        # mlflow.log_metric("drift_original_lstm", int(drift_original_lstm))
-        # mlflow.log_metric("persistent_drift_original_lstm", int(persistent_drift_original_lstm))
+    # --- MLflow Setup ---
+    # Consider setting tracking URI here if using a remote server
+    # Example: mlflow.set_tracking_uri("http://your-remote-server:5000")
+    # Or read from environment variable: mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI"))
+    try:
+        mlflow.set_experiment(experiment_name)
+        logger.info(f"MLflow experiment set to: {experiment_name}")
+    except Exception as e_exp:
+        logger.error(f"Failed to set MLflow experiment '{experiment_name}': {e_exp}")
+        # Decide if you want to proceed without MLflow or return an error
+        # return {"error": f"Failed to set MLflow experiment: {e_exp}"}
 
 
-        prophet_hyperparams_to_run = {
-            'changepoint_prior_scale': 0.1,
-            'seasonality_prior_scale': 10.0,
-            'holidays_prior_scale': 5.0
-        }
-        lstm_hyperparams_to_run = {
-            'seq_len': 14, # Add seq_len here if you want to vary it via hyperparams
-            'units': 128, 
-            'num_layers': 2, 
-            'dropout_rate': 0.0, # Changed from 0.1 to 0.0 for variety
-            'learning_rate': 0.001, 
-            'epochs': 50, 
-            'batch_size': 32
-        }
+    # Initialize results dictionary
+    results_summary = {
+        "mlflow_run_id": None,
+        "error": None, # To store potential errors
+        # Initialize metrics to None or NaN
+        "prophet_original_mape": np.nan,
+        "lstm_original_mape": np.nan,
+        "prophet_hyperparam_mape": np.nan,
+        "lstm_hyperparam_mape": np.nan,
+        "drift_detected_on_hp_lstm": None,
+        "persistent_drift_on_hp_lstm": None,
+    }
 
-        logging.info("\n--- Running Models with Specific Hyperparameters ---")
+    try:
+        with mlflow.start_run() as run:
+            run_id = run.info.run_uuid
+            results_summary["mlflow_run_id"] = run_id # Store run ID early
+            mlflow.set_tag("dataset_path", os.path.basename(str(csv_path))) # Handle non-string paths if needed
+            mlflow.log_param("full_data_path", str(csv_path))
+            logger.info(f"MLflow Run ID: {run_id} for dataset: {csv_path}")
 
-        _, _, _, prophet_mape_hp = run_prophet_model_with_hyperparams(
-            df,
-            prophet_params=prophet_hyperparams_to_run
-        )
-        prophet_mape_hp = prophet_mape_hp if prophet_mape_hp is not None else float('inf')
+            # --- Load Data ---
+            df = load_and_prepare(csv_path)
+            if df is None or df.empty:
+                error_msg = "Data loading failed or data is empty. Aborting pipeline."
+                logger.error(error_msg)
+                mlflow.log_param("pipeline_status", "failed_data_load")
+                results_summary["error"] = error_msg
+                return results_summary # Return immediately with error
 
-        _, _, _, _, lstm_mape_hp = run_lstm_model_with_hyperparams(
-            df,
-            lstm_params=lstm_hyperparams_to_run,
-        )
-        lstm_mape_hp = lstm_mape_hp if lstm_mape_hp is not None else float('inf')
+            # --- Run Models & Get Results ---
+            logger.info("\n--- Running Original Models (Base Comparison) ---")
+            try:
+                 _, _, _, prophet_mape = run_prophet_model(df)
+                 results_summary["prophet_original_mape"] = prophet_mape if prophet_mape is not None else np.nan
+            except Exception as e_prophet_orig:
+                 logger.error(f"Error running original Prophet model: {e_prophet_orig}", exc_info=True)
 
-        logging.info("\n--- Drift Detection (on Hyperparameter LSTM) ---")
-        drift_hp = False
-        persistent_drift_hp = False
-        drift_threshold = 20.0 # Define threshold for drift
-
-        if lstm_mape_hp != float('inf') and pd.notna(lstm_mape_hp):
-            drift_hp = check_drift(lstm_mape_hp, threshold=drift_threshold)
-            persistent_drift_hp = check_drift_trend(model_type="LSTM_Hyperparam", threshold=drift_threshold, recent=5)
-            logging.info(f"Drift detected on HP LSTM: {drift_hp}, Persistent drift on HP LSTM: {persistent_drift_hp}")
-
-            mlflow.log_metric("drift_detected_hp_lstm", int(drift_hp))
-            mlflow.log_metric("persistent_drift_detected_hp_lstm", int(persistent_drift_hp))
-            mlflow.log_param("drift_threshold_hp", drift_threshold)
-        else:
-            logging.warning("Skipping drift detection for HP LSTM: LSTM Hyperparameter model failed or produced invalid MAPE.")
-            mlflow.log_metric("drift_detected_hp_lstm", -1) # Indicate skipped/failed
-            mlflow.log_metric("persistent_drift_detected_hp_lstm", -1)
+            try:
+                 _, _, _, _, lstm_mape = run_lstm_model(df)
+                 results_summary["lstm_original_mape"] = lstm_mape if lstm_mape is not None else np.nan
+            except Exception as e_lstm_orig:
+                 logger.error(f"Error running original LSTM model: {e_lstm_orig}", exc_info=True)
 
 
-        results_summary = {
-            "mlflow_run_id": run_id,
-            "prophet_original_mape": prophet_mape,
-            "lstm_original_mape": lstm_mape,
-            "mlflow_experiment_id": run.info.experiment_id,
-            "prophet_hyperparam_mape": prophet_mape_hp,
-            "lstm_hyperparam_mape": lstm_mape_hp,
-            # "drift_original_lstm": drift_original_lstm, # Uncomment if logged above
-            # "persistent_drift_original_lstm": persistent_drift_original_lstm, # Uncomment
-            "drift_detected_on_hp_lstm": drift_hp,
-            "persistent_drift_on_hp_lstm": persistent_drift_hp,
-        }
-        logging.info(f"Forecasting pipeline finished. Summary: {results_summary}")
-        mlflow.log_param("pipeline_status", "completed")
+            # --- Run Models with Hyperparameters ---
+            # Define hyperparameters (consider making these arguments to the function later)
+            prophet_hyperparams_to_run = {
+                'changepoint_prior_scale': 0.1,
+                'seasonality_prior_scale': 10.0,
+                'holidays_prior_scale': 5.0
+            }
+            lstm_hyperparams_to_run = {
+                'seq_len': 14, 'units': 128, 'num_layers': 2, 'dropout_rate': 0.0,
+                'learning_rate': 0.001, 'epochs': 50, 'batch_size': 32
+            }
+
+            logger.info("\n--- Running Models with Specific Hyperparameters ---")
+            try:
+                _, _, _, prophet_mape_hp = run_prophet_model_with_hyperparams(
+                    df, prophet_params=prophet_hyperparams_to_run
+                )
+                results_summary["prophet_hyperparam_mape"] = prophet_mape_hp if prophet_mape_hp is not None else np.nan
+            except Exception as e_prophet_hp:
+                logger.error(f"Error running Prophet model with hyperparams: {e_prophet_hp}", exc_info=True)
+
+            try:
+                _, _, _, _, lstm_mape_hp = run_lstm_model_with_hyperparams(
+                    df, lstm_params=lstm_hyperparams_to_run,
+                )
+                results_summary["lstm_hyperparam_mape"] = lstm_mape_hp if lstm_mape_hp is not None else np.nan
+            except Exception as e_lstm_hp:
+                 logger.error(f"Error running LSTM model with hyperparams: {e_lstm_hp}", exc_info=True)
+
+
+            # --- Drift Detection ---
+            # Use the calculated lstm_mape_hp if available
+            calculated_lstm_mape_hp = results_summary["lstm_hyperparam_mape"]
+            logger.info("\n--- Drift Detection (on Hyperparameter LSTM) ---")
+            drift_hp = False
+            persistent_drift_hp = False
+            drift_threshold = 20.0
+
+            if not pd.isna(calculated_lstm_mape_hp) and calculated_lstm_mape_hp != float('inf'):
+                try:
+                    drift_hp = check_drift(calculated_lstm_mape_hp, threshold=drift_threshold)
+                    # Persistent drift relies on CSV, may not work reliably in deployed env
+                    persistent_drift_hp = check_drift_trend(model_type="LSTM_Hyperparam", threshold=drift_threshold, recent=5)
+                    logger.info(f"Drift detected on HP LSTM: {drift_hp}, Persistent drift on HP LSTM: {persistent_drift_hp}")
+
+                    mlflow.log_metric("drift_detected_hp_lstm", int(drift_hp))
+                    mlflow.log_metric("persistent_drift_detected_hp_lstm", int(persistent_drift_hp))
+                    mlflow.log_param("drift_threshold_hp", drift_threshold)
+                except Exception as e_drift:
+                     logger.error(f"Error during drift detection: {e_drift}")
+            else:
+                logger.warning("Skipping drift detection for HP LSTM: MAPE is invalid.")
+                mlflow.log_metric("drift_detected_hp_lstm", -1) # Indicate skipped/invalid
+                mlflow.log_metric("persistent_drift_detected_hp_lstm", -1)
+
+            results_summary["drift_detected_on_hp_lstm"] = drift_hp
+            results_summary["persistent_drift_on_hp_lstm"] = persistent_drift_hp
+
+            # Pipeline completed successfully (even if some models failed internally)
+            mlflow.log_param("pipeline_status", "completed")
+            logger.info(f"Forecasting pipeline finished processing. Returning summary.")
+            return results_summary
+
+    except Exception as e_outer:
+        # Catch errors occurring outside the mlflow run block (e.g., setting experiment)
+        # Or potentially errors within the block if not caught internally
+        error_msg = f"An unexpected error occurred in the main pipeline function: {e_outer}"
+        logger.error(error_msg, exc_info=True)
+        results_summary["error"] = error_msg
+        # Attempt to log failure status if a run was started
+        if 'run' in locals() and run:
+             mlflow.log_param("pipeline_status", "failed_outer_exception")
+             mlflow.end_run(status="FAILED") # Explicitly fail the run
         return results_summary
 
 
-# ... (all your functions: mean_absolute_percentage_error, evaluate_forecast, log_metrics_to_csv,
-#      check_drift, check_drift_trend, load_and_prepare, create_sequences, run_prophet_model,
-#      run_prophet_model_with_hyperparams, run_lstm_model, run_lstm_model_with_hyperparams,
-#      run_forecasting_pipeline GO ABOVE THIS BLOCK) ...
-if __name__ == '__main__':
-    # --- ngrok Configuration ---
-    # !!! CRITICAL: ENSURE YOUR NGROK AUTHTOKEN IS PASTED CORRECTLY HERE !!!
-    NGROK_AUTHTOKEN_FROM_USER = "2wsCDg9OuRuTH6byPWcr3berIkS_bjXjwzFDutiN3Fvxarm1"  # <--- YOUR ACTUAL TOKEN HERE
-
-    MLFLOW_UI_PORT = 5000 # Port for MLflow UI
-
-    public_url = None
-    mlflow_ui_process = None
-
-    # Check if the user has provided a token
-    if not NGROK_AUTHTOKEN_FROM_USER or NGROK_AUTHTOKEN_FROM_USER == "2wsCDg9OuRuTH6byPWcr3berIkS_bjXjwzFDutiN3Fvxarm1": # Check if it's empty or the placeholder
-        logging.warning("NGROK_AUTHTOKEN_FROM_USER is effectively not set or is the placeholder. ngrok will not be started.")
-        print("WARNING: ngrok authtoken is not properly set in the script. MLflow UI will only be accessible locally if you start it manually.")
-    else:
-        # If we are in this 'else' block, it means NGROK_AUTHTOKEN_FROM_USER should be your actual token.
-        logging.info(f"Attempting to configure ngrok with token: {NGROK_AUTHTOKEN_FROM_USER[:5]}... (partially hidden)")
-        try:
-            conf.get_default().auth_token = NGROK_AUTHTOKEN_FROM_USER # Use the token variable
-            logging.info("ngrok authtoken configured successfully with pyngrok.")
-
-            # Ensure mlruns directory exists for MLflow UI
-            if not os.path.exists("mlruns"):
-                os.makedirs("mlruns")
-                logging.info("Created 'mlruns' directory.")
-
-            # Start MLflow UI in the background
-            mlflow_command = [
-                "mlflow", "ui",
-                "--backend-store-uri", f"file:{os.path.join(os.getcwd(), 'mlruns')}",
-                "--port", str(MLFLOW_UI_PORT),
-                "--host", "0.0.0.0"
-            ]
-            logging.info(f"Starting MLflow UI with command: {' '.join(mlflow_command)}")
-            mlflow_ui_process = subprocess.Popen(mlflow_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            logging.info(f"MLflow UI process started with PID: {mlflow_ui_process.pid if mlflow_ui_process else 'N/A'}")
-
-            logging.info(f"Waiting for MLflow UI to start on port {MLFLOW_UI_PORT}...")
-            time.sleep(5) # Give MLflow UI a moment to start
-
-            logging.info("Attempting to start ngrok tunnel...")
-            public_url = ngrok.connect(MLFLOW_UI_PORT, "http")
-            logging.info(f"ngrok tunnel established. MLflow UI accessible at: {public_url}")
-            print(f"MLflow UI is running.")
-            print(f"  Local access: http://localhost:{MLFLOW_UI_PORT}")
-            print(f"  Publicly via ngrok: {public_url}")
-
-        except Exception as e:
-            logging.error(f"Error starting MLflow UI or ngrok: {e}", exc_info=True)
-            print(f"ERROR: Could not start MLflow UI with ngrok: {e}")
-            if mlflow_ui_process:
-                try:
-                    mlflow_ui_process.terminate()
-                    mlflow_ui_process.wait(timeout=2) # Short timeout
-                except: # Broad except to ensure it doesn't crash shutdown
-                    if mlflow_ui_process.poll() is None: # If still running
-                        mlflow_ui_process.kill()
-                        mlflow_ui_process.wait()
-
-            public_url = None # Ensure public_url is None if ngrok fails
-
-
-    # --- Forecasting Pipeline Execution ---
-    actual_csv_path = "retail_store_inventory.csv" # Your dataset
-    actual_experiment_name = "RetailStoreForecasting_ActualData_Ngrok" # Experiment name
-
-    summary_actual = None # Initialize summary
-    if os.path.exists(actual_csv_path):
-        logging.info(f"Running forecasting pipeline for: {actual_csv_path}")
-        try:
-            summary_actual = run_forecasting_pipeline(actual_csv_path, experiment_name=actual_experiment_name)
-            if summary_actual:
-                print(f"\nSummary for {actual_csv_path}:")
-                for key, value in summary_actual.items():
-                    if isinstance(value, float) and not pd.isna(value):
-                        print(f"  {key}: {value:.2f}")
-                    else:
-                        print(f"  {key}: {value}")
-            else:
-                print(f"Pipeline execution for {actual_csv_path} completed but returned no summary.")
-                logging.warning(f"Pipeline execution for {actual_csv_path} returned no summary.")
-        except Exception as e_pipeline:
-            logging.error(f"Error during forecasting pipeline execution for {actual_csv_path}: {e_pipeline}", exc_info=True)
-            print(f"ERROR during forecasting pipeline: {e_pipeline}")
-    else:
-        logging.error(f"Dataset not found: {actual_csv_path}")
-        print(f"ERROR: Dataset not found - {actual_csv_path}")
-
-    # --- Keep alive for ngrok and Cleanup ---
-    print("\nForecasting pipeline finished processing.") # Clarified message
-
-    if public_url: # If ngrok was successfully started
-        print(f"MLflow UI remains accessible at: {public_url} (and http://localhost:{MLFLOW_UI_PORT})")
-        print("Press Ctrl+C in this terminal to stop the script, ngrok tunnel, and MLflow UI process.")
-        try:
-            while True:
-                time.sleep(1) # Keep the main thread alive
-        except KeyboardInterrupt:
-            logging.info("KeyboardInterrupt received. Shutting down...")
-            print("\nShutting down ngrok and MLflow UI...")
-        finally:
-            logging.info("Starting cleanup...")
-            if public_url:
-                try:
-                    active_tunnels = ngrok.get_tunnels()
-                    for tunnel in active_tunnels:
-                        if tunnel.public_url == public_url or tunnel.public_url.replace("https://", "http://") == public_url: # ngrok might return https
-                            ngrok.disconnect(tunnel.public_url)
-                            logging.info(f"ngrok tunnel {tunnel.public_url} disconnected.")
-                            break # Assuming only one tunnel was started for this port
-                except Exception as e_ngrok_disc:
-                    logging.error(f"Error disconnecting ngrok tunnel: {e_ngrok_disc}")
-                try:
-                    ngrok.kill() # Kills all ngrok processes started by this pyngrok instance
-                    logging.info("All ngrok processes (for this pyngrok instance) killed.")
-                except Exception as e_ngrok_kill:
-                    logging.error(f"Error killing ngrok processes: {e_ngrok_kill}")
-
-            if mlflow_ui_process:
-                logging.info(f"Terminating MLflow UI process (PID: {mlflow_ui_process.pid})...")
-                try:
-                    mlflow_ui_process.terminate() # Send SIGTERM
-                    mlflow_ui_process.wait(timeout=5) # Wait for it to terminate
-                    if mlflow_ui_process.poll() is None: # If still running after timeout
-                        logging.warning("MLflow UI process did not terminate gracefully, killing.")
-                        mlflow_ui_process.kill() # Send SIGKILL
-                        mlflow_ui_process.wait()
-                        logging.info("MLflow UI process killed.")
-                    else:
-                        logging.info("MLflow UI process terminated successfully.")
-                except Exception as e_mlflow_term:
-                    logging.error(f"Error terminating MLflow UI process: {e_mlflow_term}")
-            print("Shutdown complete.")
-    else:
-        # This block executes if public_url is None (ngrok didn't start or failed)
-        if not NGROK_AUTHTOKEN_FROM_USER or NGROK_AUTHTOKEN_FROM_USER == "2wsCDg9OuRuTH6byPWcr3berIkS_bjXjwzFDutiN3Fvxarm1":
-            # Message already printed at the beginning
-            pass
-        else: # Token was provided, but ngrok/UI failed for other reasons
-            print("An ngrok authtoken was provided, but ngrok or MLflow UI did not start correctly. Please check logs above for specific errors (e.g., port conflicts, ngrok service issues).")
-        print("Script finished. If you started MLflow UI manually, you'll need to stop it manually.")
-
-    logging.info("Script execution fully completed.")
+# --- FILE SHOULD END HERE ---
+# NO if __name__ == '__main__': block that starts ngrok/mlflow ui.

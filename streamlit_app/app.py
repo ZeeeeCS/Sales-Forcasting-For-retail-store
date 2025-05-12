@@ -46,8 +46,6 @@ if uploaded_file is not None:
             st.success("Forecasting pipeline completed!")
             if "mlflow_run_id" in results_summary:
                 st.info(f"MLflow Run ID for this forecast: {results_summary['mlflow_run_id']}")
-                model_uri = f"runs:/{results_summary['mlflow_run_id']}/model"
-                mlflow.pyfunc.load_model(model_uri)
                 # If you have a publicly accessible MLflow UI, you could construct a link here.
                 # local_mlflow_link = "http://localhost:5000/#/experiments/.../runs/..." # Needs logic
         else:

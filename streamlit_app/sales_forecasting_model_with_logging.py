@@ -560,6 +560,7 @@ def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperime
             "mlflow_run_id": run_id,
             "prophet_original_mape": prophet_mape,
             "lstm_original_mape": lstm_mape,
+            "mlflow_experiment_id": run.info.experiment_id,
             "prophet_hyperparam_mape": prophet_mape_hp,
             "lstm_hyperparam_mape": lstm_mape_hp,
             # "drift_original_lstm": drift_original_lstm, # Uncomment if logged above
@@ -576,7 +577,6 @@ def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperime
 #      check_drift, check_drift_trend, load_and_prepare, create_sequences, run_prophet_model,
 #      run_prophet_model_with_hyperparams, run_lstm_model, run_lstm_model_with_hyperparams,
 #      run_forecasting_pipeline GO ABOVE THIS BLOCK) ...
-
 if __name__ == '__main__':
     # --- ngrok Configuration ---
     # !!! CRITICAL: ENSURE YOUR NGROK AUTHTOKEN IS PASTED CORRECTLY HERE !!!

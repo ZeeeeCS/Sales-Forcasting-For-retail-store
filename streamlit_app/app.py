@@ -1,141 +1,108 @@
-# app.py
 import streamlit as st
 import pandas as pd
-import mlflow
 import os
-import subprocess
-import signal
-from pyngrok import ngrok, conf
-from time import sleep
-from sales_forecasting_model_with_logging import run_forecasting_pipeline
+import sys # To add to sys.path if your model script is in a different directory
 
-# Configuration
-MLFLOW_DIR = os.path.abspath("./mlruns")
-MLFLOW_PORT = 8080
-NGROK_AUTH_TOKEN = "2wsCDg9OuRuTH6byPWcr3berIkS_bjXjwzFDutiN3Fvxarm1"  # Replace with your actual token
+# --- IMPORTANT: Add the directory of your model script to Python's path ---
+# This assumes 'sales_forecasting_model_with_logging.py' is in the same directory as 'streamlit_app.py'
+# or in a subdirectory. Adjust as needed if your structure is different.
+# If they are in the same directory, this might not be strictly necessary,
+# but it's good practice if you plan to organize into modules.
 
-# Setup directories
-os.makedirs(MLFLOW_DIR, exist_ok=True)
+# Assuming your structure is:
+# Sales-Forcasting-For-retail-store/
+# |--- streamlit_app/
+#      |--- streamlit_app.py  (This file)
+#      |--- sales_forecasting_model_with_logging.py
+# If so, they are in the same directory from Python's perspective when streamlit_app.py is run.
 
-# Configure MLflow
-mlflow.set_tracking_uri(f"file://{MLFLOW_DIR}")
+# If sales_forecasting_model_with_logging.py was, for example, one level up:
+# SCRIPT_DIR = os.path.dirname(os.path.abspath(file))
+# sys.path.append(os.path.dirname(SCRIPT_DIR))
 
-def start_mlflow():
-    """Start MLflow UI as background process"""
+# Let's assume sales_forecasting_model_with_logging.py is in the same directory for now
+# and you'll rename it to something like 'forecasting_pipeline.py'
+from sales_forecasting_model_with_logging import run_forecasting_pipeline # Your main modeling script, possibly renamed
+
+st.title("Retail Store Sales Forecaster")
+
+uploaded_file = st.file_uploader("Choose a CSV file for sales data", type="csv")
+
+if uploaded_file is not None:
+    st.write("File Uploaded! Processing...")
     try:
-        return subprocess.Popen(
-            ["mlflow", "ui", "--port", str(MLFLOW_PORT), "--backend-store-uri", MLFLOW_DIR],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            preexec_fn=os.setsid
-        )
-    except Exception as e:
-        st.error(f"Failed to start MLflow: {str(e)}")
-        return None
-
-def start_ngrok_tunnel(port):
-    """Start ngrok tunnel with error handling"""
-    try:
-        conf.get_default().config_path = "./ngrok.yml"
-        conf.get_default().auth_token = NGROK_AUTH_TOKEN
-        return ngrok.connect(port, "http")
-    except Exception as e:
-        st.error(f"Failed to start ngrok tunnel: {str(e)}")
-        return None
-
-def cleanup():
-    """Clean up background processes"""
-    if "mlflow_process" in st.session_state and st.session_state.mlflow_process:
-        os.killpg(os.getpgid(st.session_state.mlflow_process.pid), signal.SIGTERM)
-    if "ngrok_tunnel" in st.session_state and st.session_state.ngrok_tunnel:
-        ngrok.kill()
-
-def main():
-    st.title("🔮 Sales Forecasting Dashboard")
-    
-    # Initialize services
-    if "services_initialized" not in st.session_state:
-        st.session_state.mlflow_process = start_mlflow()
-        sleep(5)  # Give MLflow time to start
+        # Save the uploaded file temporarily to pass its path to your pipeline
+        # (Your pipeline function currently expects a file path)
+        temp_dir = "temp_data"
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
         
-        if st.session_state.mlflow_process:
-            st.session_state.ngrok_tunnel = start_ngrok_tunnel(MLFLOW_PORT)
-            if st.session_state.ngrok_tunnel:
-                public_url = st.session_state.ngrok_tunnel.public_url
-                st.markdown(f"""
-                **MLflow UI**: [Open Tracking Dashboard]({public_url})
-                """)
-            else:
-                st.warning("Could not establish ngrok tunnel")
+        temp_file_path = os.path.join(temp_dir, uploaded_file.name)
+        with open(temp_file_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        
+        st.write(f"Temporary file saved at: {temp_file_path}")
+
+        # --- Call your existing pipeline function ---
+        # Modify your run_forecasting_pipeline to return key results for Streamlit
+        # For example, it could return a dictionary with metrics, paths to plot images,
+        # and a DataFrame of predictions.
+
+        # Let's assume your run_forecasting_pipeline is in forecasting_pipeline.py
+        # And it's set up to use a unique experiment name per run or session
+        experiment_name = f"Streamlit_UserRun_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        with st.spinner("Running forecast models... This may take a few minutes."):
+            # IMPORTANT: The run_forecasting_pipeline in your current script has ngrok startup
+            # logic in its main block. That main block will NOT run when imported.
+            # You need to ensure that the core modeling logic is within the
+            # run_forecasting_pipeline function itself, and it doesn't try to start ngrok.
+            # MLflow logging within the function is fine.
+            
+            # For now, we'll call the pipeline. It will log to MLflow locally.
+            # The MLflow UI access is a separate concern from the Streamlit app's core function.
+            results_summary = run_forecasting_pipeline(
+                csv_path=temp_file_path,
+                experiment_name=experiment_name # Each user run gets a new MLflow experiment or run
+            )
+
+        if results_summary:
+            st.subheader("Forecasting Results Summary:")
+            
+            # Display metrics from the summary
+            if "prophet_original_mape" in results_summary:
+                st.write(f"Prophet (Original) MAPE: {results_summary['prophet_original_mape']:.2f}%")
+            if "lstm_original_mape" in results_summary:
+                st.write(f"LSTM (Original) MAPE: {results_summary['lstm_original_mape']:.2f}%")
+            if "prophet_hyperparam_mape" in results_summary:
+                st.write(f"Prophet (Hyperparam) MAPE: {results_summary['prophet_hyperparam_mape']:.2f}%")
+            if "lstm_hyperparam_mape" in results_summary:
+                st.write(f"LSTM (Hyperparam) MAPE: {results_summary['lstm_hyperparam_mape']:.2f}%")
+
+            # You would ideally have your pipeline return actual forecast DataFrames or plot objects
+            # For example, if run_lstm_model_with_hyperparams returned predictions:
+            # df_predictions = results_summary.get("lstm_hp_predictions_df")
+            # if df_predictions is not None:
+            #     st.subheader("LSTM (Hyperparameter) Forecast:")
+            #     st.line_chart(df_predictions.set_index('ds')['yhat']) # Example
+            #     st.dataframe(df_predictions)
+
+            st.success("Forecasting pipeline completed!")
+            if "mlflow_run_id" in results_summary:
+                st.info(f"MLflow Run ID for this forecast: {results_summary['mlflow_run_id']}")
+                # If you have a publicly accessible MLflow UI, you could construct a link here.
+                # local_mlflow_link = "http://localhost:5000/#/experiments/.../runs/..." # Needs logic
         else:
-            st.warning("MLflow tracking disabled - results not logged")
-        
-        st.session_state.services_initialized = True
+            st.error("Something went wrong during the forecasting process. No summary returned.")
+            
+        # Clean up the temporary file
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
 
-    # Sidebar controls
-    with st.sidebar:
-        st.header("⚙️ Settings")
-        uploaded_file = st.file_uploader("Upload CSV data", type=["csv"])
-        run_button = st.button("Run Forecasting Pipeline")
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
+        import traceback
+        st.text(traceback.format_exc())
 
-    # Main content area
-    if uploaded_file is not None:
-        try:
-            df_preview = pd.read_csv(uploaded_file)
-            st.subheader("📊 Data Preview")
-            st.dataframe(df_preview.head(), use_container_width=True)
-        except Exception as e:
-            st.error(f"Error reading file: {e}")
-
-    if run_button and uploaded_file is not None:
-        with st.spinner("🚀 Running forecasting pipeline..."):
-            temp_path = None
-            try:
-                # Save uploaded file temporarily
-                temp_path = f"./temp_{uploaded_file.name}"
-                with open(temp_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-                
-                # Run pipeline
-                with mlflow.start_run():
-                    results = run_forecasting_pipeline(temp_path)
-                
-                if results:
-                    st.success("✅ Pipeline completed successfully!")
-                    st.subheader("📈 Results Summary")
-
-                    # Metrics display
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Prophet (Original) MAPE", f"{results.get('prophet_original_mape', 0):.2f}%")
-                        st.metric("LSTM (Original) MAPE", f"{results.get('lstm_original_mape', 0):.2f}%")
-                    with col2:
-                        st.metric("Prophet (Tuned) MAPE", f"{results.get('prophet_hyperparam_mape', 0):.2f}%")
-                        st.metric("LSTM (Tuned) MAPE", f"{results.get('lstm_hyperparam_mape', 0):.2f}%")
-
-                    # Drift detection
-                    st.subheader("🚨 Drift Detection")
-                    cols = st.columns(2)
-                    with cols[0]:
-                        st.markdown("**Original Models**")
-                        st.write(f"Immediate Drift: {'⚠️' if results.get('drift_original_lstm') else '✅'}")
-                        st.write(f"Persistent Drift: {'🔴' if results.get('persistent_drift_original_lstm') else '🟢'}")
-                    with cols[1]:
-                        st.markdown("**Tuned Models**")
-                        st.write(f"Immediate Drift: {'⚠️' if results.get('drift_detected_on_hp_lstm') else '✅'}")
-                        st.write(f"Persistent Drift: {'🔴' if results.get('persistent_drift_on_hp_lstm') else '🟢'}")
-
-            except Exception as e:
-                st.error(f"❌ Pipeline failed: {e}")
-            finally:
-                if temp_path and os.path.exists(temp_path):
-                    os.remove(temp_path)
-
-    elif run_button and not uploaded_file:
-        st.warning("⚠️ Please upload a CSV file first!")
-
-if __name__ == "__main__":
-    try:
-        main()
-    finally:
-        cleanup()
+else:
+    st.info("Please upload a CSV file to start forecasting.")

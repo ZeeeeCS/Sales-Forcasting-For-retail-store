@@ -4,7 +4,6 @@ import os
 
 import sys
 import time # For timestamp
-from sales_forecasting_model_with_logging import Forecasting_plot
 # --- Import the pipeline function ---
 # Option 1: If you renamed the file
 from sales_forecasting_model_with_logging import run_forecasting_pipeline,plot_lstm_forecast,plot_prophet_forecast

@@ -115,7 +115,11 @@ def load_and_prepare(filepath):
     """Loads data, aggregates by date, renames columns, and sets index."""
     logging.info(f"Loading and preparing data from: {filepath}")
     try:
+        # Check if filepath is a file-like object (from Streamlit upload) or a path string
+        if hasattr(filepath, 'seek'):
+            filepath.seek(0)
         df = pd.read_csv(filepath)
+        
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         df.dropna(subset=['Date'], inplace=True)
         df['Units Sold'] = pd.to_numeric(df['Units Sold'], errors='coerce')
@@ -160,7 +164,6 @@ def run_prophet_model(df):
     train_size = int(len(df_prophet) * 0.8)
     train_df, test_df = df_prophet[:train_size], df_prophet[train_size:]
     
-    # **FIX:** Added holiday features for improved accuracy
     holidays_cal = calendar()
     holidays_df = pd.DataFrame({
         'ds': holidays_cal.holidays(start=df_prophet['ds'].min(), end=df_prophet['ds'].max()),
@@ -197,7 +200,6 @@ def run_prophet_model_with_hyperparams(df, prophet_params):
     train_size = int(len(df_prophet) * 0.8)
     train_df, test_df = df_prophet[:train_size], df_prophet[train_size:]
     
-    # **FIX:** Added holiday features for improved accuracy
     holidays_cal = calendar()
     holidays_df = pd.DataFrame({
         'ds': holidays_cal.holidays(start=df_prophet['ds'].min(), end=df_prophet['ds'].max()),
@@ -281,7 +283,8 @@ def run_lstm_model(df):
         mlflow.log_param("lstm_original_epochs", epochs)
         mlflow.log_metrics({"rmse_lstm_original": rmse, "mae_lstm_original": mae, "mape_lstm_original": mape})
         mlflow.keras.log_model(model, artifact_path="lstm_model_original")
-        log_metrics_to_csv(test_dates.max(), rmse, mae, mape, "LSTM_Original")
+        if not test_dates.empty:
+            log_metrics_to_csv(test_dates.max(), rmse, mae, mape, "LSTM_Original")
     except Exception as e_mlflow:
         logger.error(f"LSTM (Original): Error logging to MLflow: {e_mlflow}")
         
@@ -348,7 +351,8 @@ def run_lstm_model_with_hyperparams(df, lstm_params):
         mlflow.log_params({f"lstm_hp_{k}": v for k, v in lstm_params.items()})
         mlflow.log_metrics({"rmse_lstm_hyperparam": rmse, "mae_lstm_hyperparam": mae, "mape_lstm_hyperparam": mape})
         mlflow.keras.log_model(model, artifact_path="lstm_model_hyperparam")
-        log_metrics_to_csv(test_dates.max(), rmse, mae, mape, "LSTM_Hyperparam")
+        if not test_dates.empty:
+            log_metrics_to_csv(test_dates.max(), rmse, mae, mape, "LSTM_Hyperparam")
     except Exception as e_mlflow:
         logger.error(f"LSTM (Hyperparam): Error logging to MLflow: {e_mlflow}")
 
@@ -359,11 +363,14 @@ def plot_prophet_forecast(df, forecast_df, title="Prophet Forecast"):
     if df is None or forecast_df is None: return None
     fig, ax = plt.subplots(figsize=(14, 7))
     sns.set(style="whitegrid")
-    ax.plot(df.index, df['y'], label='Original Data', color='blue')
+    ax.plot(df.index, df['y'], label='Historical Data', color='blue', alpha=0.8)
     ax.plot(forecast_df['ds'], forecast_df['yhat'], label='Forecast', color='orange')
-    ax.fill_between(forecast_df['ds'], forecast_df['yhat_lower'], forecast_df['yhat_upper'], color='lightgray', alpha=0.5, label='Uncertainty Interval')
+    ax.fill_between(forecast_df['ds'], forecast_df['yhat_lower'], forecast_df['yhat_upper'], color='orange', alpha=0.2, label='Uncertainty Interval')
     ax.set_title(title, fontsize=16)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Units Sold")
     ax.legend()
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5)
     fig.autofmt_xdate()
     return fig
 
@@ -371,11 +378,14 @@ def plot_lstm_forecast(df, preds_inv, y_test_inv, test_dates, title="LSTM Foreca
     if df is None or len(y_test_inv) == 0: return None
     fig, ax = plt.subplots(figsize=(14, 7))
     sns.set(style="whitegrid")
-    ax.plot(df.index, df['y'], label='Training Data', color='blue')
-    ax.plot(test_dates, y_test_inv, label='Actual Test Data', color='green', marker='o', linestyle='--')
+    ax.plot(df.index, df['y'], label='Historical Data', color='blue', alpha=0.8)
+    ax.plot(test_dates, y_test_inv, label='Actual Test Data', color='green', marker='o', linestyle='None', markersize=5)
     ax.plot(test_dates, preds_inv, label='LSTM Predictions', color='red', marker='x', linestyle='--')
     ax.set_title(title, fontsize=16)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Units Sold")
     ax.legend()
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5)
     fig.autofmt_xdate()
     return fig
     
@@ -391,10 +401,9 @@ def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperime
         try:
             df = load_and_prepare(csv_path)
             if df is None:
-                raise ValueError("Data loading failed.")
+                raise ValueError("Data loading and preparation failed. Check CSV format.")
             mlflow.set_tag("dataset_source", os.path.basename(str(csv_path)))
 
-            # **FIX:** Capture full results, not just MAPE
             _, prophet_fcst_orig, _, prophet_mape_orig = run_prophet_model(df)
             _, lstm_preds_orig, lstm_actuals_orig, lstm_dates_orig, lstm_mape_orig = run_lstm_model(df)
             
@@ -441,61 +450,3 @@ def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperime
 
     logging.info("Forecasting pipeline finished.")
     return results_summary
-
-# --- Main Execution Block ---
-if __name__ == '__main__':
-    # !!! CRITICAL: PASTE YOUR NGROK AUTHTOKEN HERE !!!
-    NGROK_AUTHTOKEN_FROM_USER = ""  # <--- YOUR ACTUAL TOKEN HERE (e.g., "2abc...")
-
-    MLFLOW_UI_PORT = 5000
-    public_url = None
-    mlflow_ui_process = None
-
-    if NGROK_AVAILABLE and NGROK_AUTHTOKEN_FROM_USER:
-        try:
-            conf.get_default().auth_token = NGROK_AUTHTOKEN_FROM_USER
-            mlruns_dir = os.path.join(os.getcwd(), 'mlruns')
-            os.makedirs(mlruns_dir, exist_ok=True)
-            
-            mlflow_command = ["mlflow", "ui", "--backend-store-uri", f"file:{mlruns_dir}", "--port", str(MLFLOW_UI_PORT), "--host", "0.0.0.0"]
-            mlflow_ui_process = subprocess.Popen(mlflow_command)
-            time.sleep(5)
-            public_url = ngrok.connect(MLFLOW_UI_PORT, "http")
-            print(f"\nMLflow UI is RUNNING.\n  Local: http://localhost:{MLFLOW_UI_PORT}\n  Public: {public_url}\n")
-        except Exception as e:
-            print(f"ERROR: Could not start MLflow UI with ngrok: {e}")
-            public_url = None
-    else:
-        print("WARNING: ngrok authtoken not set or pyngrok not installed.")
-
-    actual_csv_path = "retail_store_inventory.csv"
-    if os.path.exists(actual_csv_path):
-        summary = run_forecasting_pipeline(actual_csv_path)
-        print(f"\n--- Pipeline Summary ---")
-        for key, value in summary.items():
-            if isinstance(value, float):
-                print(f"  {key}: {value:.4f}")
-            elif isinstance(value, (pd.DataFrame, np.ndarray, pd.Index)):
-                print(f"  {key}: (object of type {type(value).__name__})")
-            else:
-                print(f"  {key}: {value}")
-        print("-" * 25)
-    else:
-        print(f"ERROR: Dataset not found - {actual_csv_path}")
-
-    if public_url:
-        print(f"MLflow UI remains accessible at: {public_url}")
-        print("Press Ctrl+C to shut down.")
-        try:
-            while True: time.sleep(1)
-        except KeyboardInterrupt:
-            print("\nShutting down...")
-        finally:
-            ngrok.disconnect(public_url)
-            ngrok.kill()
-            if mlflow_ui_process:
-                mlflow_ui_process.terminate()
-                mlflow_ui_process.wait()
-            print("Cleanup complete.")
-    else:
-        print("\nPipeline finished.")

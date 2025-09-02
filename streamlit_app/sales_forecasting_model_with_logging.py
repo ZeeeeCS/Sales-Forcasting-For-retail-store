@@ -15,12 +15,18 @@ import mlflow.prophet
 from prophet import Prophet
 from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 import logging
+<<<<<<< HEAD
+import time # Keep if used internally
+import matplotlib.pyplot as plt
+import seaborn as sns
+=======
 
 # --- Additional imports for ngrok and background process ---
 import subprocess
 from pyngrok import ngrok, conf
 import time
 
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -37,6 +43,60 @@ def evaluate_forecast(y_true, y_pred):
     return rmse, mae, mape
 
 def log_metrics_to_csv(date, rmse, mae, mape, model_type, log_file="metrics_log.csv"):
+<<<<<<< HEAD
+    """Logs metrics to a CSV file. (May not persist in deployed envs)"""
+    # (Code for this function remains the same as in previous examples)
+    # (Be mindful this might fail or be ineffective in deployed Streamlit Cloud)
+    try:
+        log_dir = os.path.dirname(log_file)
+        if log_dir and not os.path.exists(log_dir):
+            # Check permissions before trying to create
+            if os.access(os.path.dirname(log_dir) or '.', os.W_OK):
+                os.makedirs(log_dir, exist_ok=True)
+            else:
+                logger.warning(f"Cannot create log directory {log_dir}, insufficient permissions.")
+                return # Cannot proceed
+        elif not os.access(log_dir or '.', os.W_OK):
+            logger.warning(f"Cannot write to log directory {log_dir or '.'}, insufficient permissions.")
+            return
+
+        log_exists = os.path.exists(log_file)
+        log_date_str = date.strftime('%Y-%m-%d') if isinstance(date, pd.Timestamp) else str(date)
+        # Ensure metrics are numeric before logging
+        rmse = float(rmse) if pd.notna(rmse) else np.nan
+        mae = float(mae) if pd.notna(mae) else np.nan
+        mape = float(mape) if pd.notna(mape) else np.nan
+        row = pd.DataFrame([[log_date_str, model_type, rmse, mae, mape]], columns=["date", "model_type", "rmse", "mae", "mape"])
+
+        if log_exists:
+            try:
+                # Handle potential read errors more gracefully
+                try:
+                    existing = pd.read_csv(log_file)
+                except (pd.errors.EmptyDataError, FileNotFoundError):
+                    existing = pd.DataFrame(columns=["date", "model_type", "rmse", "mae", "mape"])
+
+                updated = pd.concat([existing, row], ignore_index=True)
+                updated.to_csv(log_file, index=False)
+            except Exception as e_update:
+                logger.error(f"Error updating CSV log {log_file}: {e_update}. Attempting to write new.")
+                try:
+                    row.to_csv(log_file, index=False)
+                except Exception as e_write_new:
+                    logger.error(f"Failed to write new CSV log row after update error: {e_write_new}")
+        else:
+            try:
+                row.to_csv(log_file, index=False)
+            except Exception as e_write_initial:
+                logger.error(f"Failed to write initial CSV log row: {e_write_initial}")
+
+        logger.info(f"Attempted to log metrics for {model_type} to {log_file}")
+    except OSError as e_os:
+        logger.warning(f"Could not write to CSV log file {log_file} (permission/OS issue?): {e_os}")
+    except Exception as e_csv:
+        logger.error(f"An unexpected error occurred during CSV logging to {log_file}: {e_csv}")
+
+=======
     """Logs metrics to a CSV file."""
     log_exists = os.path.exists(log_file)
     log_date_str = date.strftime('%Y-%m-%d') if isinstance(date, pd.Timestamp) else str(date)
@@ -55,6 +115,7 @@ def log_metrics_to_csv(date, rmse, mae, mape, model_type, log_file="metrics_log.
     else:
         row.to_csv(log_file, index=False)
     logging.info(f"Logged metrics for {model_type} to {log_file}")
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
 
 # --- Drift Detection ---
 def check_drift(mape, threshold=20.0):
@@ -108,6 +169,48 @@ def load_and_prepare(filepath):
     """Loads data, aggregates by date, renames columns, and sets index."""
     logging.info(f"Loading and preparing data from: {filepath}")
     try:
+<<<<<<< HEAD
+        if isinstance(filepath, str):
+            df = pd.read_csv(filepath)
+        else:
+            filepath.seek(0)
+            df = pd.read_csv(filepath)
+
+        if 'Date' not in df.columns or 'Units Sold' not in df.columns:
+            logger.error("Input data missing required columns: 'Date' and 'Units Sold'.")
+            return None
+
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce') # Coerce errors
+        df.dropna(subset=['Date'], inplace=True) # Drop rows where date conversion failed
+        if df.empty:
+            logger.error("No valid dates found in data after conversion.")
+            return None
+
+        df['Units Sold'] = pd.to_numeric(df['Units Sold'], errors='coerce')
+        # Decide how to handle non-numeric Units Sold (e.g., fill with 0 or mean, or drop)
+        initial_rows = len(df)
+        df.dropna(subset=['Units Sold'], inplace=True)
+        if len(df) < initial_rows:
+            logger.warning(f"Dropped {initial_rows - len(df)} rows with non-numeric 'Units Sold'.")
+        if df.empty:
+            logger.error("No valid 'Units Sold' data found.")
+            return None
+
+        try:
+            # Aggregate, ensuring the result is not empty
+            df_agg = df.groupby('Date')['Units Sold'].sum().reset_index()
+            if df_agg.empty:
+                logger.error("Aggregation resulted in empty DataFrame.")
+                return None
+        except Exception as agg_e:
+            logger.error(f"Error during data aggregation by date: {agg_e}")
+            return None
+
+        df_agg = df_agg.rename(columns={"Date": "ds", "Units Sold": "y"})
+        df_agg.set_index("ds", inplace=True)
+        logger.info(f"Data loaded and prepared successfully. Shape: {df_agg.shape}")
+        return df_agg
+=======
         df = pd.read_csv(filepath)
         df['Date'] = pd.to_datetime(df['Date'])
         df = df.groupby('Date', as_index=False)['Units Sold'].sum()
@@ -115,6 +218,7 @@ def load_and_prepare(filepath):
         df.set_index("ds", inplace=True)
         logging.info(f"Data loaded successfully. Shape: {df.shape}")
         return df
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
     except FileNotFoundError:
         logging.error(f"Data loading error: File not found at {filepath}")
         return None
@@ -169,25 +273,64 @@ def run_prophet_model(df):
     holiday_df = pd.DataFrame({'ds': holidays, 'holiday': 'USFederalHoliday'})
     logging.info(f"Prophet (Original): Generated {len(holiday_df)} US Federal holidays.")
 
+<<<<<<< HEAD
+        holidays_cal = calendar()
+        holidays = pd.Series(dtype='datetime64[ns]') # Default empty
+        try:
+            min_date=train_df['ds'].min(); max_date=test_df_prophet['ds'].max()
+            if pd.notna(min_date) and pd.notna(max_date):
+                holidays = holidays_cal.holidays(start=min_date, end=max_date)
+        except ValueError as e:
+            logger.warning(f"Prophet (Original): Error generating holidays: {e}")
+        holiday_df = pd.DataFrame({'ds': holidays, 'holiday': 'USFederalHoliday'})
+=======
     model = Prophet(holidays=holiday_df if not holiday_df.empty else None) # Pass None if no holidays
     model.add_regressor('day_of_week')
     model.add_regressor('month')
     model.add_regressor('is_weekend')
     logging.info("Prophet (Original): Fitting model with default parameters.")
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
 
     fit_cols = ['ds', 'y', 'day_of_week', 'month', 'is_weekend']
     try:
         model.fit(train_df[fit_cols])
+<<<<<<< HEAD
+        future = test_df_prophet[['ds', 'day_of_week', 'month', 'is_weekend']]
+        forecast_df = model.predict(future) # Ensure this is assigned
+
+        # ... (Evaluate) ...
+        if forecast_df is not None and not test_df_prophet.empty:
+            y_true = test_df_prophet['y'].values
+            y_pred = forecast_df['yhat'].values
+            rmse, mae, mape = evaluate_forecast(y_true, y_pred)
+            logger.info(f"Prophet (Original) Evaluation: RMSE={rmse:.2f}, MAE={mae:.2f}, MAPE={mape:.2f}%")
+        else:
+            logger.warning("Prophet (Original): Skipping evaluation due to missing forecast or test data.")
+
+=======
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
     except Exception as e:
         logging.error(f"Prophet (Original): Error during model fitting: {e}")
         return None, None, None, float('inf')
 
     future = test_df[['ds', 'day_of_week', 'month', 'is_weekend']]
     try:
+<<<<<<< HEAD
+        if not np.isnan(mape): # Only log valid metrics
+            mlflow.log_metrics({"rmse_prophet_original": rmse, "mae_prophet_original": mae, "mape_prophet_original": mape})
+        if model is not None:
+            mlflow.prophet.log_model(model, artifact_path="prophet_model_original")
+            logger.info("Prophet (Original): Logged model to MLflow.")
+        else:
+            logger.warning("Prophet (Original): Model object is None, skipping MLflow model logging.")
+    except Exception as e_mlflow:
+        logger.error(f"Prophet (Original): Error logging to MLflow: {e_mlflow}")
+=======
         forecast = model.predict(future)
     except Exception as e:
         logging.error(f"Prophet (Original): Error during prediction: {e}")
         return model, None, test_df, float('inf')
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
 
     y_true = test_df['y'].values
     y_pred = forecast['yhat'].values
@@ -241,8 +384,20 @@ def run_prophet_model_with_hyperparams(df, prophet_params):
         logging.warning(f"Prophet (Hyperparam): Error generating holidays (min_date: {min_date}, max_date: {max_date}): {e}. Proceeding without holidays.")
         holidays = pd.Series(dtype='datetime64[ns]') # Empty series
 
+<<<<<<< HEAD
+        holidays_cal = calendar()
+        holidays = pd.Series(dtype='datetime64[ns]')
+        try:
+            min_date=train_df['ds'].min(); max_date=test_df_prophet['ds'].max()
+            if pd.notna(min_date) and pd.notna(max_date):
+                holidays = holidays_cal.holidays(start=min_date, end=max_date)
+        except ValueError as e:
+            logger.warning(f"Prophet (Hyperparam): Error generating holidays: {e}")
+        holiday_df = pd.DataFrame({'ds': holidays, 'holiday': 'USFederalHoliday'})
+=======
     holiday_df = pd.DataFrame({'ds': holidays, 'holiday': 'USFederalHoliday'})
     logging.info(f"Prophet (Hyperparam): Generated {len(holiday_df)} US Federal holidays.")
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
 
     model = Prophet(
         holidays=holiday_df if not holiday_df.empty else None,
@@ -258,16 +413,44 @@ def run_prophet_model_with_hyperparams(df, prophet_params):
     fit_cols = ['ds', 'y', 'day_of_week', 'month', 'is_weekend']
     try:
         model.fit(train_df[fit_cols])
+<<<<<<< HEAD
+        future = test_df_prophet[['ds', 'day_of_week', 'month', 'is_weekend']]
+        forecast_df = model.predict(future)
+
+        # ... (Evaluate) ...
+        if forecast_df is not None and not test_df_prophet.empty:
+            y_true = test_df_prophet['y'].values
+            y_pred = forecast_df['yhat'].values
+            rmse, mae, mape = evaluate_forecast(y_true, y_pred)
+            logger.info(f"Prophet (Hyperparam) Evaluation: RMSE={rmse:.2f}, MAE={mae:.2f}, MAPE={mape:.2f}%")
+        else:
+            logger.warning("Prophet (Hyperparam): Skipping evaluation.")
+
+=======
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
     except Exception as e:
         logging.error(f"Prophet (Hyperparam): Error during model fitting: {e}")
         return None, None, None, float('inf')
 
     future = test_df[['ds', 'day_of_week', 'month', 'is_weekend']]
     try:
+<<<<<<< HEAD
+        mlflow.log_params({f"prophet_hp_{k}": v for k, v in prophet_params.items()})
+        if not np.isnan(mape):
+            mlflow.log_metrics({"rmse_prophet_hyperparam": rmse, "mae_prophet_hyperparam": mae, "mape_prophet_hyperparam": mape})
+        if model is not None:
+            mlflow.prophet.log_model(model, artifact_path="prophet_model_hyperparam")
+            logger.info("Prophet (Hyperparam): Logged model to MLflow.")
+        else:
+            logger.warning("Prophet (Hyperparam): Model object is None, skipping MLflow model logging.")
+    except Exception as e_mlflow:
+        logger.error(f"Prophet (Hyperparam): Error logging to MLflow: {e_mlflow}")
+=======
         forecast = model.predict(future)
     except Exception as e:
         logging.error(f"Prophet (Hyperparam): Error during prediction: {e}")
         return model, None, test_df, float('inf')
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
 
     y_true = test_df['y'].values
     y_pred = forecast['yhat'].values
@@ -344,6 +527,26 @@ def run_lstm_model(df):
     else:
         logging.warning("LSTM (Original): Could not determine test dates for CSV logging.")
 
+<<<<<<< HEAD
+    # ... (Log to MLflow) ...
+    try:
+        mlflow.log_param("lstm_original_seq_len", seq_len_val)
+        # ... (log other params) ...
+        if not np.isnan(mape):
+            mlflow.log_metrics({"rmse_lstm_original": rmse, "mae_lstm_original": mae, "mape_lstm_original": mape})
+        if history and 'loss' in history.history:
+            for epoch, loss_val in enumerate(history.history['loss']):
+                mlflow.log_metric("train_loss_lstm_original", loss_val, step=epoch)
+        if model is not None:
+            mlflow.keras.log_model(model, artifact_path="lstm_model_original") # No keras_module
+            logger.info("LSTM (Original): Logged model to MLflow.")
+        else:
+            logger.warning("LSTM (Original): Model object is None, skipping MLflow model logging.")
+    except Exception as e_mlflow:
+        logger.error(f"LSTM (Original): Error logging to MLflow: {e_mlflow}")
+
+    return model, preds_inv, y_test_inv, test_dates, mape
+=======
     # MLflow logging
     mlflow.log_param("lstm_original_seq_len", seq_len_val)
     mlflow.log_param("lstm_original_epochs", epochs_val)
@@ -359,6 +562,7 @@ def run_lstm_model(df):
     mlflow.keras.log_model(model, artifact_path="lstm_model_original")
     logging.info("LSTM (Original): Logged metrics and model to MLflow and CSV.")
     return model, preds_inv.flatten(), y_test_inv.flatten(), test_dates, mape
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
 
 # --- LSTM Model WITH Hyperparameters ---
 def run_lstm_model_with_hyperparams(df, lstm_params):
@@ -366,6 +570,31 @@ def run_lstm_model_with_hyperparams(df, lstm_params):
     logging.info(f"--- Running LSTM with Hyperparams: {lstm_params}, Seq_len: {seq_len} ---")
     df_lstm = df[['y']].copy()
 
+<<<<<<< HEAD
+    try:
+        # ... (Scaling, sequence creation, splitting using train/test split for scaling, checking sizes) ...
+        # ... (Build, compile, train, predict using lstm_params) ...
+        # Example build part:
+        units = lstm_params.get('units', 64); num_layers = lstm_params.get('num_layers', 1); # etc.
+        model = Sequential()
+        # ... build layers ...
+        model.compile(optimizer=Adam(learning_rate=lstm_params.get('learning_rate',0.001)), loss='mse')
+        # history = model.fit(...)
+        # preds_scaled = model.predict(...)
+        # preds_inv = scaler.inverse_transform(preds_scaled).flatten()
+        # y_test_inv = scaler.inverse_transform(y_test.reshape(-1, 1)).flatten()
+
+        # --- Placeholder for actual model steps ---
+        # This requires implementing the detailed steps from previous versions correctly here
+        logger.warning("LSTM Hyperparam run logic needs full implementation based on previous examples.")
+        # Simulate some results for structure
+        y_test_len_dummy = max(0, len(df_lstm) - int(len(df_lstm) * 0.8) - seq_len) # Estimate test length
+        preds_inv = np.random.rand(y_test_len_dummy) * df_lstm['y'].mean()
+        y_test_inv = np.random.rand(y_test_len_dummy) * df_lstm['y'].mean()
+        if y_test_len_dummy > 0:
+            test_dates = df_lstm.index[-y_test_len_dummy:]
+        # ---------------------------------------------
+=======
     if len(df_lstm) < seq_len + 5: # Need enough for sequences and some test data
         logging.error(f"LSTM (Hyperparam) Error: Insufficient data ({len(df_lstm)} rows) for seq_len {seq_len}.")
         return None, None, None, None, float('inf')
@@ -375,6 +604,7 @@ def run_lstm_model_with_hyperparams(df, lstm_params):
     if split_idx_original <= 0 or split_idx_original >= original_len:
         logging.error(f"LSTM Hyperparam Error: Invalid original split index ({split_idx_original})")
         return None, None, None, None, float('inf') 
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
 
     train_data_unscaled = df_lstm.iloc[:split_idx_original]
     test_data_unscaled = df_lstm.iloc[split_idx_original:]
@@ -453,6 +683,55 @@ def run_lstm_model_with_hyperparams(df, lstm_params):
 
     if not test_dates.empty:
         log_metrics_to_csv(test_dates[-1], rmse, mae, mape, "LSTM_Hyperparam")
+<<<<<<< HEAD
+
+    # ... (Log to MLflow) ...
+    try:
+        mlflow.log_param("lstm_hp_seq_len", seq_len)
+        mlflow.log_params({f"lstm_hp_{k}": v for k, v in lstm_params.items() if k != 'seq_len'})
+        if not np.isnan(mape):
+            mlflow.log_metrics({"rmse_lstm_hyperparam": rmse, "mae_lstm_hyperparam": mae, "mape_lstm_hyperparam": mape})
+        # Log history if available
+        if history and 'loss' in history.history: # Check 'history' variable
+            for epoch, loss_val in enumerate(history.history['loss']):
+                mlflow.log_metric("train_loss_lstm_hyperparam", loss_val, step=epoch)
+        if history and 'val_loss' in history.history:
+            for epoch, loss_val in enumerate(history.history['val_loss']):
+                mlflow.log_metric("val_loss_lstm_hyperparam", loss_val, step=epoch)
+        if model is not None:
+            mlflow.keras.log_model(model, artifact_path="lstm_model_hyperparam") # No keras_module
+            logger.info("LSTM (Hyperparam): Logged model to MLflow.")
+        else:
+            logger.warning("LSTM (Hyperparam): Model object is None, skipping MLflow model logging.")
+    except Exception as e_mlflow:
+        logger.error(f"LSTM (Hyperparam): Error logging to MLflow: {e_mlflow}")
+
+
+    return model, preds_inv, y_test_inv, test_dates, mape
+
+def Forecasting_plot(df, forecast_df, model_name="Prophet"):
+    """
+    Plots the original data and the forecasted values.
+    """
+
+
+    sns.set(style="whitegrid")
+    plt.figure(figsize=(14, 7))
+    plt.plot(df.index, df['y'], label='Original Data', color='blue')
+    
+    if forecast_df is not None:
+        plt.plot(forecast_df['ds'], forecast_df['yhat'], label='Forecast', color='orange')
+        plt.fill_between(forecast_df['ds'], forecast_df['yhat_lower'], forecast_df['yhat_upper'], color='lightorange', alpha=0.5, label='Uncertainty Interval')
+
+    plt.title(f"{model_name} Forecast")
+    plt.xlabel("Date")
+    plt.ylabel("Units Sold")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+# --- Main Pipeline Function ---
+=======
     else:
         logging.warning("LSTM (Hyperparam): Could not determine test dates for CSV logging.")
     
@@ -476,6 +755,7 @@ def run_lstm_model_with_hyperparams(df, lstm_params):
 
 
 # --- Main Entrypoint ---
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
 def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperiment"):
     logging.info(f"Starting forecasting pipeline for: {csv_path}")
     # mlflow.set_tracking_uri("file:/./mlruns") # Example for local tracking, customize as needed
@@ -501,11 +781,56 @@ def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperime
         _, _, _, _, lstm_mape = run_lstm_model(df)
         if lstm_mape is None: lstm_mape = float('inf')
 
+<<<<<<< HEAD
+    active_run = None # To manage run closing on error
+    try:
+        with mlflow.start_run() as run:
+            active_run = run # Assign active run
+            run_id = run.info.run_uuid
+            exp_id = run.info.experiment_id
+            results_summary["mlflow_run_id"] = run_id
+            results_summary["mlflow_experiment_id"] = exp_id
+
+            # Handle potential non-string path for logging
+            log_path = str(csv_path) if not isinstance(csv_path, str) else csv_path
+            try: # Log basename if possible, otherwise log the type
+                file_basename = os.path.basename(log_path)
+            except:
+                file_basename = f"uploaded_{type(csv_path).__name__}"
+
+            mlflow.set_tag("dataset_source", file_basename)
+            mlflow.log_param("input_data_source_type", type(csv_path).__name__)
+            logger.info(f"MLflow Run ID: {run_id} in Experiment ID: {exp_id} for dataset: {file_basename}")
+
+            # --- Load Data ---
+            df = load_and_prepare(csv_path) # Pass original csv_path (could be string or file obj)
+            if df is None or df.empty:
+                error_msg = "Data loading failed or data is empty. Aborting pipeline."
+                logger.error(error_msg)
+                mlflow.log_param("pipeline_status", "failed_data_load")
+                results_summary["error"] = error_msg
+                # No need to end run here, 'with' statement handles it
+                return results_summary
+
+            # --- Run Models & Get Results ---
+            logger.info("\n--- Running Original Models ---")
+            prophet_model_orig, prophet_fcst_orig, _, prophet_mape_orig = run_prophet_model(df)
+            results_summary["prophet_original_mape"] = prophet_mape_orig if pd.notna(prophet_mape_orig) else np.nan
+            if prophet_fcst_orig is not None:
+                results_summary["prophet_original_forecast_df"] = prophet_fcst_orig[['ds', 'yhat', 'yhat_lower', 'yhat_upper']] # Store relevant columns
+
+            lstm_model_orig, lstm_preds_orig, lstm_actuals_orig, lstm_dates_orig, lstm_mape_orig = run_lstm_model(df)
+            results_summary["lstm_original_mape"] = lstm_mape_orig if pd.notna(lstm_mape_orig) else np.nan
+            results_summary["lstm_original_predictions"] = lstm_preds_orig
+            results_summary["lstm_original_actuals"] = lstm_actuals_orig
+            results_summary["lstm_original_dates"] = lstm_dates_orig
+=======
         # Drift for original LSTM is less critical here, but can be logged
         # drift_original_lstm = check_drift(lstm_mape) 
         # persistent_drift_original_lstm = check_drift_trend(model_type="LSTM_Original")
         # mlflow.log_metric("drift_original_lstm", int(drift_original_lstm))
         # mlflow.log_metric("persistent_drift_original_lstm", int(persistent_drift_original_lstm))
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
 
 
         prophet_hyperparams_to_run = {
@@ -523,7 +848,14 @@ def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperime
             'batch_size': 32
         }
 
+<<<<<<< HEAD
+            prophet_model_hp, prophet_fcst_hp, _, prophet_mape_hp = run_prophet_model_with_hyperparams(df, prophet_params=prophet_hyperparams_to_run)
+            results_summary["prophet_hyperparam_mape"] = prophet_mape_hp if pd.notna(prophet_mape_hp) else np.nan
+            if prophet_fcst_hp is not None:
+                results_summary["prophet_hyperparam_forecast_df"] = prophet_fcst_hp[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+=======
         logging.info("\n--- Running Models with Specific Hyperparameters ---")
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
 
         _, _, _, prophet_mape_hp = run_prophet_model_with_hyperparams(
             df,
@@ -695,6 +1027,97 @@ if __name__ == '__main__':
                 except Exception as e_ngrok_kill:
                     logging.error(f"Error killing ngrok processes: {e_ngrok_kill}")
 
+<<<<<<< HEAD
+    except Exception as e_outer:
+        error_msg = f"An unexpected error occurred in the main pipeline function: {e_outer}"
+        logger.error(error_msg, exc_info=True)
+        results_summary["error"] = error_msg
+        # If run started, mark it failed; 'with' might handle this but explicit is safer
+        if active_run:
+            mlflow.log_param("pipeline_status", "failed_exception")
+            mlflow.end_run(status="FAILED")
+            logger.info(f"MLflow run {active_run.info.run_uuid} marked as FAILED due to exception.")
+
+    # Return the dictionary containing results and potential errors
+    return results_summary
+
+
+def plot_prophet_forecast(df, forecast_df, title="Prophet Forecast"):
+    """
+    Plots the original data and Prophet's forecast with uncertainty intervals.
+    
+    Args:
+        df (pd.DataFrame): The original time series data.
+        forecast_df (pd.DataFrame): The forecast DataFrame from Prophet.
+        title (str): The title for the plot.
+    
+    Returns:
+        matplotlib.figure.Figure: The Matplotlib figure object.
+    """
+    logger = logging.getLogger(__name__)
+    if df is None or df.empty or forecast_df is None or forecast_df.empty:
+        logger.warning("Skipping Prophet plot: Input data or forecast is empty.")
+        return None
+    
+    sns.set(style="whitegrid")
+    fig, ax = plt.subplots(figsize=(14, 7))
+    
+    # Plot original data (historical)
+    ax.plot(df.index, df['y'], label='Original Data', color='blue')
+    
+    # Plot forecast
+    ax.plot(forecast_df['ds'], forecast_df['yhat'], label='Forecast', color='orange')
+    
+    # Plot uncertainty interval
+    ax.fill_between(forecast_df['ds'], forecast_df['yhat_lower'], forecast_df['yhat_upper'], color='lightgray', alpha=0.5, label='Uncertainty Interval')
+
+    ax.set_title(title, fontsize=16)
+    ax.set_xlabel("Date", fontsize=12)
+    ax.set_ylabel("Units Sold", fontsize=12)
+    ax.legend(loc='upper left')
+    fig.autofmt_xdate() # Auto-format date ticks
+    
+    return fig
+
+def plot_lstm_forecast(df, preds_inv, y_test_inv, test_dates, title="LSTM Forecast"):
+    """
+    Plots the original data and LSTM's forecast (no uncertainty interval).
+    
+    Args:
+        df (pd.DataFrame): The original time series data.
+        preds_inv (np.ndarray): Inverse-transformed LSTM predictions.
+        y_test_inv (np.ndarray): Inverse-transformed actual test values.
+        test_dates (pd.Index): Dates corresponding to the test data.
+        title (str): The title for the plot.
+    
+    Returns:
+        matplotlib.figure.Figure: The Matplotlib figure object.
+    """
+    logger = logging.getLogger(__name__)
+    if df is None or df.empty or len(y_test_inv) == 0:
+        logger.warning("Skipping LSTM plot: Input data or test values are empty.")
+        return None
+        
+    sns.set(style="whitegrid")
+    fig, ax = plt.subplots(figsize=(14, 7))
+    
+    # Plot original data
+    ax.plot(df.index, df['y'], label='Training Data', color='blue')
+    
+    # Plot actual test data
+    ax.plot(test_dates, y_test_inv, label='Actual Test Data', color='green', linestyle='dashed', marker='o')
+    
+    # Plot LSTM predictions
+    ax.plot(test_dates, preds_inv, label='LSTM Predictions', color='red', linestyle='dashed', marker='x')
+
+    ax.set_title(title, fontsize=16)
+    ax.set_xlabel("Date", fontsize=12)
+    ax.set_ylabel("Units Sold", fontsize=12)
+    ax.legend(loc='upper left')
+    fig.autofmt_xdate()
+    
+    return fig
+=======
             if mlflow_ui_process:
                 logging.info(f"Terminating MLflow UI process (PID: {mlflow_ui_process.pid})...")
                 try:
@@ -720,3 +1143,4 @@ if __name__ == '__main__':
         print("Script finished. If you started MLflow UI manually, you'll need to stop it manually.")
 
     logging.info("Script execution fully completed.")
+>>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576

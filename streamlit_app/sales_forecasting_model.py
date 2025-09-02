@@ -167,3 +167,4 @@ def run_forecasting_pipeline(csv_path):
         persistent_drift = check_drift_trend()
 
         return prophet_model,prophet_forecast,test_df,lstm_model,lstm_preds,lstm_true,dates,lstm_mape,drift,persistent_drift,prophet_mape
+

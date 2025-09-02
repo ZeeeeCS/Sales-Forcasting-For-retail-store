@@ -1,7 +1,4 @@
 # Sales-Forcasting-For-retail-store
-Here's a detailed `README.md` file for your `streamlit` application. It's structured to provide a comprehensive overview, guide users through setup and usage, and explain the technical components of your forecasting pipeline.
-
------
 
 ## Retail Sales Forecasting Dashboard
 

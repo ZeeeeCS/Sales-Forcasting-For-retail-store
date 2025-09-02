@@ -21,7 +21,7 @@ except ImportError:
 st.set_page_config(page_title="Sales Forecaster", layout="wide")
 
 # --- Main App ---
-st.title("🛍️ Retail Store Sales Forecaster")
+st.title("🛍️ Sales Forecaster")
 st.markdown("Upload your sales data in CSV format to generate forecasts using Prophet and LSTM models.")
 
 uploaded_file = st.file_uploader("Choose a CSV file", type="csv")

@@ -2,16 +2,9 @@ import streamlit as st
 import pandas as pd
 import os
 import traceback
-try:
-    from sales_forecasting_model_with_logging import (
-        run_forecasting_pipeline,
-        load_and_prepare,
-        plot_forecast,
-        plot_prophet_forecast
-    )
-except ImportError:
-    st.error("Fatal Error: The 'sales_forecasting_model_with_logging.py' file was not found. Please ensure it's in the same directory as this Streamlit app.")
-    st.stop()
+
+from sales_forecasting_model_with_logging import run_forecasting_pipeline,load_and_prepare,plot_forecast,plot_prophet_forecast
+
 
 
 # --- Page Configuration ---

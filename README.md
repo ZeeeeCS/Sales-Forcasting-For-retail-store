@@ -1,7 +1,5 @@
 # Sales-Forcasting-For-retail-store
 
-## Retail Sales Forecasting Dashboard
-
 ### 🎯 Overview
 
 This project provides a **Streamlit** dashboard for forecasting daily retail sales. It allows users to upload their own sales data in a CSV format and instantly generate sales forecasts using two powerful machine learning models: **Prophet** (by Meta) and a **Long Short-Term Memory (LSTM)** neural network. The dashboard evaluates the performance of each model and provides key metrics to help you choose the best one for your data.

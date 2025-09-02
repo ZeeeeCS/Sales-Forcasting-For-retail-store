@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import traceback
-
+import sales_forecasting_model_with_logging
 # --- Import functions from your model script ---
 # Make sure 'sales_forecasting_model_with_logging.py' is in the same directory
 try:

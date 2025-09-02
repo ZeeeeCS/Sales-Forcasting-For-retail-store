@@ -331,7 +331,7 @@ def run_forecasting_pipeline(csv_path):
     mlflow.set_experiment("SalesForecastingExperiment")
     with mlflow.start_run():
         mlflow.log_param("data_path", csv_path)
-        run_id = mlflow.active_run().info.run_uuid
+        run_id = mlflow.active_run().info.run_id
         print(f"MLflow Run ID: {run_id}")
 
         # Load Data

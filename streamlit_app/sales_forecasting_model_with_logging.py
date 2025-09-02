@@ -100,9 +100,9 @@ def check_drift_trend(log_file="metrics_log.csv", model_type="LSTM", threshold=2
         recent_mape = mape_values.tail(recent)
 
         if len(recent_mape) < recent:
-             logging.info(f"Persistent drift check ({model_type}): Not enough valid recent data points ({len(recent_mape)}/{recent}) for a trend.")
-             return False
-             
+            logging.info(f"Persistent drift check ({model_type}): Not enough valid recent data points ({len(recent_mape)}/{recent}) for a trend.")
+            return False
+            
         persistent_drift = all(m > threshold for m in recent_mape)
         logging.info(f"Persistent drift check ({model_type}): Recent {len(recent_mape)} MAPEs > {threshold}? {persistent_drift}")
         return persistent_drift
@@ -395,7 +395,7 @@ def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperime
     results_summary = {}
 
     with mlflow.start_run() as run:
-        results_summary["mlflow_run_id"] = run.info.run_uuid
+        results_summary["mlflow_run_id"] = run.info.run_id
         results_summary["mlflow_experiment_id"] = run.info.experiment_id
 
         try:

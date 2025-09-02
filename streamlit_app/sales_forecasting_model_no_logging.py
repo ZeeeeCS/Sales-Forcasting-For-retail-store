@@ -186,6 +186,39 @@ def run_lstm_model(df, use_differencing=True):
         return None, None, None, None, float('inf')
 
 
+# --- Data Loading & Preparation ---
+def load_and_prepare(csv_path):
+    """
+    Loads a CSV file and prepares a DataFrame with a datetime index and 'y' column.
+    Assumes the CSV has columns: 'date' and 'sales' (or similar).
+    """
+    try:
+        df = pd.read_csv(csv_path)
+        # Try to find the date column
+        date_col = None
+        for col in df.columns:
+            if 'date' in col.lower():
+                date_col = col
+                break
+        if date_col is None:
+            raise ValueError("No date column found in CSV.")
+        df[date_col] = pd.to_datetime(df[date_col])
+        df = df.sort_values(by=date_col)
+        df.set_index(date_col, inplace=True)
+        # Try to find the target column
+        target_col = None
+        for col in df.columns:
+            if col.lower() in ['sales', 'y', 'target']:
+                target_col = col
+                break
+        if target_col is None:
+            raise ValueError("No target column ('sales', 'y', or 'target') found in CSV.")
+        df = df[[target_col]].rename(columns={target_col: 'y'})
+        return df
+    except Exception as e:
+        logging.error(f"Data loading failed: {e}")
+        return None
+
 # --- Main Pipeline Function ---
 def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperiment"):
     mlflow.set_experiment(experiment_name)

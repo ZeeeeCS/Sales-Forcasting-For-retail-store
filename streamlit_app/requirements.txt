@@ -13,3 +13,4 @@ mlflow
 dvc
 pyngrok
 seaborn
+statsmodels

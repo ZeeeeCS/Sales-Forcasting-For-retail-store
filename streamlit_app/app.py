@@ -6,10 +6,11 @@ import sys
 import time # For timestamp
 # --- Import the pipeline function ---
 # Option 1: If you renamed the file
-from sales_forecasting_model_with_logging import run_forecasting_pipeline,plot_lstm_forecast,plot_prophet_forecast
+from sales_forecasting_model_with_logging import run_forecasting_pipeline,plot_lstm_forecast,plot_prophet_forecast,Forecasting_plot
 # Option 2: If you kept the original name
 # from sales_forecasting_model_with_logging import run_forecasting_pipeline
 # ---
+import plotly.graph_objects as go
 
 import mlflow # Keep for potential future use, but not strictly needed for display now
 
@@ -17,7 +18,6 @@ import mlflow # Keep for potential future use, but not strictly needed for displ
 st.set_page_config(layout="wide") # Use wider layout
 
 import sys # To add to sys.path if your model script is in a different directory
-from sales_forecasting_model_with_logging import run_forecasting_pipeline # Your main modeling script, possibly renamed
 import mlflow
 
 st.title("Retail Store Sales Forecaster")
@@ -130,7 +130,7 @@ if uploaded_file is not None:
                 except Exception as plot_e:
                     st.warning(f"Could not plot LSTM forecast: {plot_e}")
                     st.dataframe(pd.DataFrame({'Date': lstm_dates, 'Forecast': lstm_preds}).round(2))
-            if lstm_preds is not None and lstm_dates is not None and len(lstm_dates) == len(lstm_preds) and df_original is not None:
+            if lstm_preds is not None and lstm_dates is not None and len(lstm_dates) == len(lstm_preds):
                 lstm_fig = plot_lstm_forecast(uploaded_file, lstm_preds, lstm_actuals, lstm_dates, "LSTM Forecast (Hyperparameters)")
                 if lstm_fig:
                     st.pyplot(lstm_fig, use_container_width=True)

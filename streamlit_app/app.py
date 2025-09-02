@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
-<<<<<<< HEAD
+
 import sys
 import time # For timestamp
 from sales_forecasting_model_with_logging import Forecasting_plot
@@ -17,11 +17,10 @@ import mlflow # Keep for potential future use, but not strictly needed for displ
 # --- Page Config ---
 st.set_page_config(layout="wide") # Use wider layout
 
-=======
 import sys # To add to sys.path if your model script is in a different directory
 from sales_forecasting_model_with_logging import run_forecasting_pipeline # Your main modeling script, possibly renamed
 import mlflow
->>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
+
 st.title("Retail Store Sales Forecaster")
 
 uploaded_file = st.file_uploader("Choose a CSV file for sales data", type="csv")
@@ -48,12 +47,12 @@ if uploaded_file is not None:
                 experiment_name=experiment_name # Each user run gets a new MLflow experiment or run
             )
 
-<<<<<<< HEAD
+
         Forecasting_plot = Forecasting_plot() # Initialize the plotting class
         st.plotly_chart(Forecasting_plot.plot_results(results_summary), use_container_width=True) # Display the plot
         # --- Display Results ---
         st.subheader("Forecasting Results Summary")
-=======
+
         if results_summary:
             st.subheader("Forecasting Results Summary:")
             
@@ -66,13 +65,12 @@ if uploaded_file is not None:
                 st.write(f"Prophet (Hyperparam) MAPE: {results_summary['prophet_hyperparam_mape']:.2f}%")
             if "lstm_hyperparam_mape" in results_summary:
                 st.write(f"LSTM (Hyperparam) MAPE: {results_summary['lstm_hyperparam_mape']:.2f}%")
->>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
+
 
             st.success("Forecasting pipeline completed!")
             if "mlflow_run_id" in results_summary:
                 st.info(f"MLflow Run ID for this forecast: {results_summary['mlflow_run_id']}")
 
-<<<<<<< HEAD
             
             col1, col2 = st.columns(2) # Create columns for layout
 
@@ -164,10 +162,6 @@ if uploaded_file is not None:
             st.error(f"Forecasting pipeline failed: {results_summary['error']}")
             if results_summary.get("mlflow_run_id"):
                 st.info(f"MLflow Run ID (failed): {results_summary['mlflow_run_id']}")
-=======
-                # If you have a publicly accessible MLflow UI, you could construct a link here.
-                # local_mlflow_link = "http://localhost:5000/#/experiments/.../runs/..." # Needs logic
->>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576
         else:
             st.error("Something went wrong during the forecasting process. No summary returned.")
             
@@ -178,7 +172,6 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"An error occurred: {e}")
         import traceback
-<<<<<<< HEAD
         st.text(traceback.format_exc()) # Show full traceback for debugging
     finally:
         # Clean up the temporary file regardless of success/failure
@@ -196,9 +189,3 @@ st.title("Sales Forecasting Dashboard")
 uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 
 
-=======
-        st.text(traceback.format_exc())
-
-else:
-    st.info("Please upload a CSV file to start forecasting.")
->>>>>>> 95e08572991d54f881af7535c58f82c0e83fe576

@@ -130,9 +130,20 @@ def run_lstm_model(df, use_differencing=True):
     logging.info(f"--- Running LSTM model (Differencing: {use_differencing}) ---")
     seq_len = 14
     df_lstm = df[['y']].copy()
+    
+    original_indices = df_lstm.index # Store original indices before differencing
+
     if use_differencing:
-        df_lstm['y'] = df_lstm['y'].diff().dropna()
+        df_lstm['y'] = df_lstm['y'].diff()
+        # FIX: Drop the NaN value created by the differencing operation
+        df_lstm.dropna(inplace=True)
+
+    if len(df_lstm) < seq_len + 5: # Check length after potentially dropping a row
+        logging.error("LSTM Error: Not enough data points after differencing.")
+        return None, None, None, None, float('inf')
+
     train_size = int(len(df_lstm) * 0.8)
+    # The rest of the function remains the same...
     train_data, test_data = df_lstm[:train_size], df_lstm[train_size:]
     scaler = MinMaxScaler()
     scaler.fit(train_data)
@@ -155,22 +166,28 @@ def run_lstm_model(df, use_differencing=True):
         model.fit(x_train, y_train, epochs=50, verbose=0, shuffle=False)
         preds_scaled = model.predict(x_test)
         preds_inv_diff = scaler.inverse_transform(preds_scaled)
-        y_test_inv = df['y'].iloc[train_size + seq_len:].values
+
+        # Correctly align with the original dataframe for inverse differencing
+        last_train_value_index = df.index.get_loc(train_data.index[-1])
+        last_train_value = df['y'].iloc[last_train_value_index]
+
+        y_test_inv = df['y'][df.index.isin(test_data.index[seq_len:])].values
+
         if use_differencing:
-            last_train_value = df['y'].iloc[train_size - 1]
             predictions_cumulative = np.cumsum(np.insert(preds_inv_diff.flatten(), 0, last_train_value))
             preds_inv = predictions_cumulative[1:]
         else:
-            preds_inv = preds_inv_diff
+            preds_inv = preds_inv_diff.flatten()
 
-        # FIX: Set any negative predictions to 0, as sales cannot be negative.
         preds_inv[preds_inv < 0] = 0
-
         min_len = min(len(y_test_inv), len(preds_inv))
         y_test_aligned = y_test_inv[:min_len]
         preds_aligned = preds_inv[:min_len]
+
+        test_dates = test_data.index[seq_len:seq_len + min_len]
+        
         rmse, mae, mape = evaluate_forecast(y_test_aligned, preds_aligned, "LSTM")
-        test_dates = df.index[train_size + seq_len : train_size + seq_len + min_len]
+
         mlflow.log_param("lstm_seq_len", seq_len)
         mlflow.log_param("lstm_use_differencing", use_differencing)
         mlflow.log_metrics({"rmse_lstm": rmse, "mae_lstm": mae, "mape_lstm": mape})

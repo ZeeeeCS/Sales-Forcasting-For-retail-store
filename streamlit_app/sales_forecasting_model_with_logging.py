@@ -24,10 +24,14 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # --- Evaluation & Helpers ---
+# In sales_forecasting_model_with_logging.py
+
 def evaluate_forecast(y_true, y_pred, model_name=""):
-    """Evaluates forecast and logs results."""
+    """Evaluates forecast and logs results, handling division-by-zero for MAPE."""
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mae = mean_absolute_error(y_true, y_pred)
+    
+    # FIX: Replace actual values of 0 with a very small number to prevent division by zero
     y_true_safe = np.where(y_true == 0, 1e-6, y_true)
     mape = np.mean(np.abs((y_true - y_pred) / y_true_safe)) * 100
     

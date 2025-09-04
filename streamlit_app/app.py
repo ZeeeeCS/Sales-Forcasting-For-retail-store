@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import os
 import traceback
+
+# --- Import functions from your model script ---
 try:
     from sales_forecasting_model_with_logging import (
         run_forecasting_pipeline,
@@ -26,14 +28,12 @@ uploaded_file = st.file_uploader("Choose a CSV file (must contain 'Date' and 'Un
 if uploaded_file is not None:
     temp_file_path = ""
     try:
-        # Save the uploaded file temporarily so our pipeline can read it from a path
         temp_dir = "temp_data"
         os.makedirs(temp_dir, exist_ok=True)
         temp_file_path = os.path.join(temp_dir, uploaded_file.name)
         with open(temp_file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
-        # Prepare the data once for plotting and pipeline
         base_df = load_and_prepare(temp_file_path)
         if base_df is None:
             st.error("Could not process the uploaded data. Please check the file format and column names ('Date', 'Units Sold').")
@@ -51,7 +51,6 @@ if uploaded_file is not None:
             if results_summary and not results_summary.get("error"):
                 st.success("Forecasting pipeline completed successfully!")
 
-                # --- Display Key Metrics ---
                 st.subheader("Model Performance Comparison (MAPE %)")
                 st.markdown("_(Lower is better)_")
                 col1, col2, col3 = st.columns(3)
@@ -61,7 +60,6 @@ if uploaded_file is not None:
                 
                 st.markdown("---")
 
-                # --- Create Tabs for each model's detailed results ---
                 sarima_tab, prophet_tab, lstm_tab = st.tabs(["SARIMA Forecast", "Prophet Forecast", "LSTM Forecast"])
 
                 with sarima_tab:
@@ -94,7 +92,6 @@ if uploaded_file is not None:
                     lstm_actuals = results_summary.get("lstm_actuals")
                     lstm_dates = results_summary.get("lstm_dates")
                     if lstm_preds is not None and lstm_actuals is not None and lstm_dates is not None:
-                        # Create a temporary test series for the generic plot function
                         lstm_test_series = pd.Series(lstm_actuals, index=lstm_dates)
                         fig = plot_forecast(base_df, lstm_preds, lstm_test_series, "LSTM Forecast with Differencing")
                         st.pyplot(fig, use_container_width=True)
@@ -118,7 +115,6 @@ if uploaded_file is not None:
         st.text(traceback.format_exc())
 
     finally:
-        # Clean up the temporary file
         if os.path.exists(temp_file_path):
             try:
                 os.remove(temp_file_path)

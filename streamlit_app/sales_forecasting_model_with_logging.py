@@ -120,34 +120,28 @@ def run_prophet_model(df_features):
         return None, None, None, float('inf')
 
 
+# In sales_forecasting_model_with_logging.py
+
 def run_lstm_model(df, use_differencing=True):
     """Trains and evaluates a univariate LSTM model, with an option for differencing."""
     logging.info(f"--- Running LSTM model (Differencing: {use_differencing}) ---")
     seq_len = 14
     df_lstm = df[['y']].copy()
-    
     if use_differencing:
         df_lstm['y'] = df_lstm['y'].diff().dropna()
-
     train_size = int(len(df_lstm) * 0.8)
-    train_data = df_lstm[:train_size]
-    test_data = df_lstm[train_size:]
-
+    train_data, test_data = df_lstm[:train_size], df_lstm[train_size:]
     scaler = MinMaxScaler()
     scaler.fit(train_data)
     scaled_train = scaler.transform(train_data)
     scaled_test = scaler.transform(test_data)
-
     x_train, y_train = create_sequences(scaled_train, seq_len)
     x_test, y_test = create_sequences(scaled_test, seq_len)
-
     if x_train.size == 0 or x_test.size == 0:
         logging.error("LSTM Error: Not enough data to create train/test sequences.")
         return None, None, None, None, float('inf')
-        
     x_train = x_train.reshape((x_train.shape[0], x_train.shape[1], 1))
     x_test = x_test.reshape((x_test.shape[0], x_test.shape[1], 1))
-
     try:
         model = Sequential([
             LSTM(64, activation='relu', input_shape=(seq_len, 1), return_sequences=True),
@@ -156,38 +150,33 @@ def run_lstm_model(df, use_differencing=True):
         ])
         model.compile(optimizer='adam', loss='mse')
         model.fit(x_train, y_train, epochs=50, verbose=0, shuffle=False)
-        
         preds_scaled = model.predict(x_test)
         preds_inv_diff = scaler.inverse_transform(preds_scaled)
-
-        # Invert differencing if used
         y_test_inv = df['y'].iloc[train_size + seq_len:].values
         if use_differencing:
             last_train_value = df['y'].iloc[train_size - 1]
-            # Create a full prediction series by cumulatively adding the predicted differences
             predictions_cumulative = np.cumsum(np.insert(preds_inv_diff.flatten(), 0, last_train_value))
-            preds_inv = predictions_cumulative[1:] # Drop the initial value to align
+            preds_inv = predictions_cumulative[1:]
         else:
             preds_inv = preds_inv_diff
 
-        # Align lengths for evaluation
+        # FIX: Set any negative predictions to 0, as sales cannot be negative.
+        preds_inv[preds_inv < 0] = 0
+
         min_len = min(len(y_test_inv), len(preds_inv))
         y_test_aligned = y_test_inv[:min_len]
         preds_aligned = preds_inv[:min_len]
-
         rmse, mae, mape = evaluate_forecast(y_test_aligned, preds_aligned, "LSTM")
-        
         test_dates = df.index[train_size + seq_len : train_size + seq_len + min_len]
-        
         mlflow.log_param("lstm_seq_len", seq_len)
         mlflow.log_param("lstm_use_differencing", use_differencing)
         mlflow.log_metrics({"rmse_lstm": rmse, "mae_lstm": mae, "mape_lstm": mape})
         mlflow.keras.log_model(model, artifact_path="lstm-model")
-
         return model, preds_aligned, y_test_aligned, test_dates, mape
     except Exception as e:
         logging.error(f"LSTM model failed: {e}")
         return None, None, None, None, float('inf')
+    
 def load_and_prepare(filepath):
     """Loads data, strips column whitespace, aggregates, and sets index."""
     logging.info(f"Loading and preparing data from: {filepath}")

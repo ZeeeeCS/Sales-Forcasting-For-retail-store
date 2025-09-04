@@ -38,6 +38,7 @@ def evaluate_forecast(y_true, y_pred, model_name=""):
     logger.info(f"{model_name} Evaluation: RMSE={rmse:.2f}, MAE={mae:.2f}, MAPE={mape:.2f}%")
     return rmse, mae, mape
 
+
 def create_time_features(df):
     """Creates time series features from a datetime index."""
     df_feat = df.copy()
@@ -119,6 +120,8 @@ def run_prophet_model(df_features):
         logging.error(f"Prophet model failed: {e}")
         return None, None, None, float('inf')
 
+
+# In sales_forecasting_model_with_logging.py
 
 # In sales_forecasting_model_with_logging.py
 

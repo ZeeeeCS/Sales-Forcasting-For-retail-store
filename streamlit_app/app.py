@@ -4,23 +4,21 @@ import os
 import traceback
 
 # --- Import functions from your model script ---
-try:
-    from sales_forecasting_model_with_logging import (
-        run_forecasting_pipeline,
-        load_and_prepare,
-        plot_forecast,
-        plot_prophet_forecast
+
+from sales_forecasting_model_with_logging import (
+    run_forecasting_pipeline,
+    load_and_prepare,
+    plot_forecast,
+    plot_prophet_forecast
     )
-except ImportError:
-    st.error("Fatal Error: The 'sales_forecasting_model_with_logging.py' file was not found. Please ensure it's in the same directory as this Streamlit app.")
-    st.stop()
+
 
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Sales Forecaster", layout="wide")
 
 # --- Main App ---
-st.title("🛍️ Advanced Sales Forecaster")
+st.title("🛍️Sales Forecaster")
 st.markdown("Upload your sales data to generate and compare forecasts from **SARIMA**, **Prophet**, and **LSTM** models.")
 
 uploaded_file = st.file_uploader("Choose a CSV file (must contain 'Date' and 'Units Sold' columns)", type="csv")

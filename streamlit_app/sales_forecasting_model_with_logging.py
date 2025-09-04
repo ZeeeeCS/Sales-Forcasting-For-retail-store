@@ -320,3 +320,91 @@ def plot_lstm_forecast(df, preds_inv, y_test_inv, test_dates, title="LSTM Foreca
     ax.legend()
     fig.autofmt_xdate()
     return fig
+# Add these functions to your sales_forecasting_model_with_logging.py file
+
+def forecast_sarima_future(df, periods):
+    """Trains a SARIMA model on all data and forecasts future periods."""
+    logging.info("--- Forecasting future with SARIMA ---")
+    try:
+        model = SARIMAX(df['y'], order=(1, 1, 1), seasonal_order=(1, 1, 0, 7))
+        results = model.fit(disp=False)
+        forecast = results.get_forecast(steps=periods)
+        forecast_df = pd.DataFrame({
+            'ds': pd.date_range(start=df.index[-1] + pd.Timedelta(days=1), periods=periods),
+            'yhat': forecast.predicted_mean
+        })
+        return forecast_df
+    except Exception as e:
+        logging.error(f"SARIMA future forecast failed: {e}")
+        return None
+
+def forecast_prophet_future(df, periods):
+    """Trains a Prophet model on all data and forecasts future periods."""
+    logging.info("--- Forecasting future with Prophet ---")
+    try:
+        df_features = create_time_features(df)
+        df_prophet = df_features.reset_index()
+        feature_names = ['dayofweek', 'quarter', 'month', 'year', 'dayofyear']
+        
+        model = Prophet()
+        for feature in feature_names:
+            model.add_regressor(feature)
+        
+        model.fit(df_prophet)
+        
+        future_dates = model.make_future_dataframe(periods=periods)
+        future_features = create_time_features(future_dates.set_index('ds'))
+        future_features.reset_index(inplace=True)
+        
+        forecast = model.predict(future_features)
+        return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+    except Exception as e:
+        logging.error(f"Prophet future forecast failed: {e}")
+        return None
+
+def forecast_lstm_future(df, periods):
+    """Trains an LSTM model on all data and forecasts future periods step-by-step."""
+    logging.info("--- Forecasting future with LSTM ---")
+    try:
+        seq_len = 14
+        # Prepare data (differencing and scaling on the whole dataset)
+        df_diff = df['y'].diff().dropna()
+        scaler = MinMaxScaler()
+        scaled_data = scaler.fit_transform(df_diff.values.reshape(-1, 1))
+
+        # Train model on all available data
+        x_all, y_all = create_sequences(scaled_data, seq_len)
+        x_all = x_all.reshape((x_all.shape[0], x_all.shape[1], 1))
+        
+        model = Sequential([
+            LSTM(64, activation='relu', input_shape=(seq_len, 1)),
+            Dense(1)
+        ])
+        model.compile(optimizer='adam', loss='mse')
+        model.fit(x_all, y_all, epochs=50, verbose=0)
+        
+        # Iteratively predict the future
+        last_sequence = scaled_data[-seq_len:]
+        future_predictions_diff_scaled = []
+        current_sequence = last_sequence.reshape((1, seq_len, 1))
+
+        for _ in range(periods):
+            next_pred_scaled = model.predict(current_sequence)
+            future_predictions_diff_scaled.append(next_pred_scaled[0, 0])
+            # Update the sequence by removing the first element and adding the new prediction
+            current_sequence = np.append(current_sequence[:, 1:, :], [[next_pred_scaled]], axis=1)
+
+        # Inverse transform the predictions
+        future_predictions_diff = scaler.inverse_transform(np.array(future_predictions_diff_scaled).reshape(-1, 1))
+        
+        # Inverse differencing
+        last_actual_value = df['y'].iloc[-1]
+        future_predictions = np.cumsum(np.insert(future_predictions_diff.flatten(), 0, last_actual_value))[1:]
+        future_predictions[future_predictions < 0] = 0 # Ensure no negative sales
+
+        future_dates = pd.date_range(start=df.index[-1] + pd.Timedelta(days=1), periods=periods)
+        forecast_df = pd.DataFrame({'ds': future_dates, 'yhat': future_predictions})
+        return forecast_df
+    except Exception as e:
+        logging.error(f"LSTM future forecast failed: {e}")
+        return None

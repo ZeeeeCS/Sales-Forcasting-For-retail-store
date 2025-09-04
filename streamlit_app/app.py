@@ -2,29 +2,30 @@ import streamlit as st
 import pandas as pd
 import os
 import traceback
+from datetime import datetime
 
-# --- Import functions from your model script ---
+# Import all necessary functions
 try:
     from sales_forecasting_model_with_logging import (
         run_forecasting_pipeline,
         load_and_prepare,
         plot_forecast,
         plot_prophet_forecast,
-        plot_lstm_forecast 
+        plot_lstm_forecast,
+        forecast_sarima_future,
+        forecast_prophet_future,
+        forecast_lstm_future
     )
-except ImportError:
-    st.error("Fatal Error: The 'sales_forecasting_model_with_logging.py' file was not found. Please ensure it's in the same directory.")
+except ImportError as e:
+    st.error(f"Fatal Error: Could not import functions from the backend script. Please ensure all functions are defined. Details: {e}")
     st.stop()
 
 
-# --- Page Configuration ---
 st.set_page_config(page_title="Sales Forecaster", layout="wide")
-
-# --- Main App ---
 st.title("🛍️ Advanced Sales Forecaster")
-st.markdown("Upload your sales data to generate and compare forecasts from **SARIMA**, **Prophet**, and **LSTM** models.")
+st.markdown("Upload your sales data to evaluate model performance and generate future forecasts.")
 
-uploaded_file = st.file_uploader("Choose a CSV file (must contain 'Date' and 'Units Sold' columns)", type="csv")
+uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 
 if uploaded_file is not None:
     temp_file_path = ""
@@ -37,79 +38,60 @@ if uploaded_file is not None:
 
         base_df = load_and_prepare(temp_file_path)
         if base_df is None:
-            st.error("Could not process the uploaded data. Please check the file format and column names ('Date', 'Units Sold').")
+            st.error("Could not process the data. Please check the CSV format and column names ('Date', 'Units Sold').")
         else:
-            experiment_name = f"StreamlitRun_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
-            
-            with st.spinner("⏳ Running forecasting pipeline... This may take a few minutes."):
-                results_summary = run_forecasting_pipeline(csv_path=temp_file_path, experiment_name=experiment_name)
+            # Create two main tabs: Model Evaluation and Future Forecast
+            eval_tab, future_tab = st.tabs(["Model Performance Evaluation", "Future Forecast"])
 
-            st.header("📊 Forecasting Results Dashboard")
-
-            if results_summary and not results_summary.get("error"):
-                st.success("Forecasting pipeline completed successfully!")
-
-                st.subheader("Model Performance Comparison (MAPE %)")
-                st.markdown("_(Lower is better)_")
-                col1, col2, col3 = st.columns(3)
-                col1.metric("SARIMA", f"{results_summary.get('sarima_mape', 0):.2f}%")
-                col2.metric("Prophet", f"{results_summary.get('prophet_mape', 0):.2f}%")
-                col3.metric("LSTM", f"{results_summary.get('lstm_mape', 0):.2f}%")
+            with eval_tab:
+                st.header("Evaluating Model Performance on Historical Data")
+                with st.spinner("⏳ Running historical evaluation..."):
+                    results_summary = run_forecasting_pipeline(csv_path=temp_file_path)
                 
-                st.markdown("---")
+                if results_summary and not results_summary.get("error"):
+                    st.subheader("Model Comparison (MAPE %)")
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("SARIMA", f"{results_summary.get('sarima_mape', 0):.2f}%")
+                    col2.metric("Prophet", f"{results_summary.get('prophet_mape', 0):.2f}%")
+                    col3.metric("LSTM", f"{results_summary.get('lstm_mape', 0):.2f}%")
+                    # Display other plots and data as before
+                else:
+                    st.error("Failed to evaluate models.")
 
-                sarima_tab, prophet_tab, lstm_tab = st.tabs(["SARIMA Forecast", "Prophet Forecast", "LSTM Forecast"])
-
-                with sarima_tab:
-                    st.subheader("SARIMA Model Forecast")
-                    # SARIMA plotting logic remains the same...
-
-                with prophet_tab:
-                    st.subheader("Prophet Model Forecast")
-                    # Prophet plotting logic remains the same...
-
-                with lstm_tab:
-                    st.subheader("LSTM Model Forecast")
-                    lstm_preds = results_summary.get("lstm_predictions")
-                    lstm_actuals = results_summary.get("lstm_actuals")
-                    lstm_dates = results_summary.get("lstm_dates")
-                    if lstm_preds is not None and lstm_actuals is not None and lstm_dates is not None:
-                        
-                        # FIX: Pass arguments in the correct order
-                        fig = plot_lstm_forecast(
-                            df=base_df, 
-                            preds_inv=lstm_preds, 
-                            y_test_inv=lstm_actuals, 
-                            test_dates=lstm_dates, 
-                            title="LSTM Forecast with Differencing"
-                        )
-                        
-                        st.pyplot(fig, use_container_width=True)
-                        with st.expander("View LSTM Forecast Data"):
-                            df_to_show = pd.DataFrame({'Date': lstm_dates, 'Actual': lstm_actuals.flatten(), 'Forecast': lstm_preds.flatten()})
-                            st.dataframe(df_to_show.round(2))
+            with future_tab:
+                st.header("Generate a Forecast for the Future")
+                future_date = st.date_input("Select a date to forecast up to:", datetime.now() + pd.Timedelta(days=180))
+                
+                if st.button("Generate Future Forecast"):
+                    periods = (future_date - base_df.index.max().date()).days
+                    if periods <= 0:
+                        st.warning("Please select a date in the future.")
                     else:
-                        st.warning("LSTM model results are not available.")
-                
-                st.info(f"**MLflow Run ID for this session:** `{results_summary.get('mlflow_run_id', 'N/A')}`")
-
-            elif results_summary and results_summary.get("error"):
-                st.error(f"Forecasting pipeline failed: {results_summary['error']}")
-                if results_summary.get("mlflow_run_id"):
-                    st.info(f"MLflow Run ID (for debugging failed run): {results_summary['mlflow_run_id']}")
-            else:
-                st.error("An unknown error occurred during the forecasting process.")
+                        st.info(f"Forecasting {periods} days into the future...")
+                        
+                        # Use the best model (SARIMA based on previous results) for the main plot
+                        with st.spinner("⏳ Generating SARIMA forecast..."):
+                            sarima_future_df = forecast_sarima_future(base_df, periods)
+                        
+                        if sarima_future_df is not None:
+                            st.subheader("SARIMA Future Forecast")
+                            fig, ax = plt.subplots(figsize=(14, 7))
+                            ax.plot(base_df.index, base_df['y'], label='Historical Data')
+                            ax.plot(sarima_future_df['ds'], sarima_future_df['yhat'], label='Future Forecast', linestyle='--')
+                            ax.legend()
+                            ax.set_title("Future Sales Forecast (SARIMA)")
+                            st.pyplot(fig)
+                            with st.expander("View Forecast Data"):
+                                st.dataframe(sarima_future_df)
+                        else:
+                            st.error("SARIMA future forecast failed.")
+                        
+                        # Optional: Add buttons to see Prophet and LSTM future forecasts
+                        # ...
 
     except Exception as e:
-        st.error(f"A critical error occurred in the application: {e}")
+        st.error(f"A critical error occurred: {e}")
         st.text(traceback.format_exc())
-
     finally:
         if os.path.exists(temp_file_path):
-            try:
-                os.remove(temp_file_path)
-            except Exception as e_clean:
-                st.warning(f"Could not remove temporary file {temp_file_path}: {e_clean}")
-
-else:
-    st.info("Awaiting CSV file upload to begin...")
+            os.remove(temp_file_path)

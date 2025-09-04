@@ -164,7 +164,7 @@ def run_lstm_model(df, use_differencing=True):
         ])
         optimizer = Adam(learning_rate=0.001) 
         model.compile(optimizer, loss='mse')
-        model.fit(x_train, y_train, epochs=20, verbose=0, shuffle=False)
+        model.fit(x_train, y_train, epochs=30, verbose=0, shuffle=False)
         preds_scaled = model.predict(x_test)
         preds_inv_diff = scaler.inverse_transform(preds_scaled)
 

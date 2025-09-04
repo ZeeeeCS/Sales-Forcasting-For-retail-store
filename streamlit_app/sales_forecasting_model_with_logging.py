@@ -184,19 +184,39 @@ def run_lstm_model(df, use_differencing=True):
     except Exception as e:
         logging.error(f"LSTM model failed: {e}")
         return None, None, None, None, float('inf')
-def load_and_prepare(csv_path):
-    """Loads and prepares the dataset."""
+def load_and_prepare(filepath):
+    """Loads data, strips column whitespace, aggregates, and sets index."""
+    logging.info(f"Loading and preparing data from: {filepath}")
     try:
-        df = pd.read_csv(csv_path, parse_dates=['Date'])
-        df = df.rename(columns={'Units Sold': 'y', 'Date': 'ds'})
-        df = df.set_index('ds').asfreq('D')
-        df['y'] = df['y'].interpolate(method='linear')
-        logging.info(f"Data loaded successfully with {len(df)} records.")
-        return df
-    except Exception as e:
-        logging.error(f"Data loading failed: {e}")
-        return None
+        if hasattr(filepath, 'seek'):
+            filepath.seek(0)
+        df = pd.read_csv(filepath)
 
+        # FIX: Strip whitespace from column names to handle minor formatting errors
+        df.columns = df.columns.str.strip()
+
+        # Check if the required columns exist after stripping whitespace
+        if 'Date' not in df.columns or 'Units Sold' not in df.columns:
+            logger.error("Data loading error: CSV must contain 'Date' and 'Units Sold' columns.")
+            return None
+
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        df.dropna(subset=['Date'], inplace=True)
+        df['Units Sold'] = pd.to_numeric(df['Units Sold'], errors='coerce')
+        df.dropna(subset=['Units Sold'], inplace=True)
+        
+        if df.empty:
+            logger.error("Data is empty after cleaning 'Date' and 'Units Sold'.")
+            return None
+
+        df_agg = df.groupby('Date')['Units Sold'].sum().reset_index()
+        df_agg = df_agg.rename(columns={"Date": "ds", "Units Sold": "y"})
+        df_agg.set_index("ds", inplace=True)
+        logger.info(f"Data loaded and prepared successfully. Shape: {df_agg.shape}")
+        return df_agg
+    except Exception as e:
+        logging.error(f"Data loading error: {e}")
+        return None
 # --- Main Pipeline Function ---
 def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperiment"):
     mlflow.set_experiment(experiment_name)

@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import traceback
 from datetime import datetime
-
+import matplotlib.pyplot as plt
 # Import all necessary functions
 try:
     from sales_forecasting_model_with_logging import (
@@ -22,7 +22,7 @@ except ImportError as e:
 
 
 st.set_page_config(page_title="Sales Forecaster", layout="wide")
-st.title("🛍️ Advanced Sales Forecaster")
+st.title("🛍️ Sales Forecaster")
 st.markdown("Upload your sales data to evaluate model performance and generate future forecasts.")
 
 uploaded_file = st.file_uploader("Choose a CSV file", type="csv")

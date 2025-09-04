@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import traceback
 
+<<<<<<< HEAD
 # --- Import functions from your model script ---
 
 from sales_forecasting_model_with_logging import (
@@ -11,6 +12,9 @@ from sales_forecasting_model_with_logging import (
     plot_forecast,
     plot_prophet_forecast
     )
+=======
+from sales_forecasting_model_with_logging import run_forecasting_pipeline,load_and_prepare,plot_forecast,plot_prophet_forecast
+>>>>>>> feef91961c071f840f9b52dde5c200d07757f739
 
 
 

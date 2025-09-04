@@ -158,8 +158,7 @@ def run_lstm_model(df, use_differencing=True):
     x_test = x_test.reshape((x_test.shape[0], x_test.shape[1], 1))
     try:
         model = Sequential([
-            LSTM(64, activation='relu', input_shape=(seq_len, 1), return_sequences=True),
-            LSTM(32, activation='relu'),
+            LSTM(50, activation='relu', input_shape=(seq_len, 1), return_sequences=True),
             Dense(1)
         ])
         optimizer = Adam(learning_rate=0.001) 

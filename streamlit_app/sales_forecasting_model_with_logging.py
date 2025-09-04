@@ -128,7 +128,7 @@ def run_prophet_model(df_features):
 def run_lstm_model(df, use_differencing=True):
     """Trains and evaluates a univariate LSTM model, with an option for differencing."""
     logging.info(f"--- Running LSTM model (Differencing: {use_differencing}) ---")
-    seq_len = 14
+    seq_len = 30
     df_lstm = df[['y']].copy()
     
     original_indices = df_lstm.index # Store original indices before differencing
@@ -164,7 +164,7 @@ def run_lstm_model(df, use_differencing=True):
         ])
         optimizer = Adam(learning_rate=0.001) 
         model.compile(optimizer, loss='mse')
-        model.fit(x_train, y_train, epochs=30, verbose=0, shuffle=False)
+        model.fit(x_train, y_train, epochs=50, verbose=0, shuffle=False)
         preds_scaled = model.predict(x_test)
         preds_inv_diff = scaler.inverse_transform(preds_scaled)
 

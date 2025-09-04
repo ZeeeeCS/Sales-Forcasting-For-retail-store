@@ -106,3 +106,176 @@ def run_prophet_model(df_features):
         rmse, mae, mape = evaluate_forecast(y_true, y_pred, "Prophet")
 
         mlflow.log_metrics({"rmse_prophet": rmse, "mae_prophet": mae, "mape_prophet": mape})
+        mlflow.prophet.log_model(model, artifact_path="prophet-model")
+
+        return model, forecast_df, test_df, mape
+    except Exception as e:
+        logging.error(f"Prophet model failed: {e}")
+        return None, None, None, float('inf')
+
+
+def run_lstm_model(df, use_differencing=True):
+    """Trains and evaluates a univariate LSTM model, with an option for differencing."""
+    logging.info(f"--- Running LSTM model (Differencing: {use_differencing}) ---")
+    seq_len = 30
+    df_lstm = df[['y']].copy()
+    
+    if use_differencing:
+        df_lstm['y'] = df_lstm['y'].diff().dropna()
+
+    train_size = int(len(df_lstm) * 0.8)
+    train_data = df_lstm[:train_size]
+    test_data = df_lstm[train_size:]
+
+    scaler = MinMaxScaler()
+    scaler.fit(train_data)
+    scaled_train = scaler.transform(train_data)
+    scaled_test = scaler.transform(test_data)
+
+    x_train, y_train = create_sequences(scaled_train, seq_len)
+    x_test, y_test = create_sequences(scaled_test, seq_len)
+
+    if x_train.size == 0 or x_test.size == 0:
+        logging.error("LSTM Error: Not enough data to create train/test sequences.")
+        return None, None, None, None, float('inf')
+        
+    x_train = x_train.reshape((x_train.shape[0], x_train.shape[1], 1))
+    x_test = x_test.reshape((x_test.shape[0], x_test.shape[1], 1))
+
+    try:
+        model = Sequential([
+            LSTM(64, activation='relu', input_shape=(seq_len, 1), return_sequences=True),
+            LSTM(32, activation='relu'),
+            Dense(1)
+        ])
+        model.compile(optimizer='adam', loss='mse')
+        model.fit(x_train, y_train, epochs=50, verbose=0, shuffle=False)
+        
+        preds_scaled = model.predict(x_test)
+        preds_inv_diff = scaler.inverse_transform(preds_scaled)
+
+        # Invert differencing if used
+        y_test_inv = df['y'].iloc[train_size + seq_len:].values
+        if use_differencing:
+            last_train_value = df['y'].iloc[train_size - 1]
+            predictions_cumulative = np.cumsum(np.insert(preds_inv_diff.flatten(), 0, last_train_value))
+            preds_inv = predictions_cumulative[1:]
+        else:
+            preds_inv = preds_inv_diff
+
+        min_len = min(len(y_test_inv), len(preds_inv))
+        y_test_aligned = y_test_inv[:min_len]
+        preds_aligned = preds_inv[:min_len]
+
+        rmse, mae, mape = evaluate_forecast(y_test_aligned, preds_aligned, "LSTM")
+        
+        test_dates = df.index[train_size + seq_len : train_size + seq_len + min_len]
+        
+        mlflow.log_param("lstm_seq_len", seq_len)
+        mlflow.log_param("lstm_use_differencing", use_differencing)
+        mlflow.log_metrics({"rmse_lstm": rmse, "mae_lstm": mae, "mape_lstm": mape})
+        mlflow.keras.log_model(model, artifact_path="lstm-model")
+
+        return model, preds_aligned, y_test_aligned, test_dates, mape
+    except Exception as e:
+        logging.error(f"LSTM model failed: {e}")
+        return None, None, None, None, float('inf')
+
+
+# --- Data Loading & Preparation ---
+def load_and_prepare(csv_path):
+    """Loads CSV data and prepares it for forecasting."""
+    try:
+        df = pd.read_csv(csv_path, parse_dates=True, index_col=0)
+        df = df.sort_index()
+        # Ensure column 'y' exists, or rename appropriately
+        if 'y' not in df.columns:
+            # Try to infer the target column
+            possible_targets = [col for col in df.columns if col.lower() in ['sales', 'target', 'value']]
+            if possible_targets:
+                df.rename(columns={possible_targets[0]: 'y'}, inplace=True)
+            else:
+                logging.error("Target column 'y' not found in CSV.")
+                return None
+        df = df[['y']]
+        df.dropna(inplace=True)
+        return df
+    except Exception as e:
+        logging.error(f"Error loading and preparing data: {e}")
+        return None
+
+# --- Main Pipeline Function ---
+def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperiment"):
+    mlflow.set_experiment(experiment_name)
+    results_summary = {}
+
+    with mlflow.start_run() as run:
+        results_summary["mlflow_run_id"] = run.info.run_id
+        results_summary["mlflow_experiment_id"] = run.info.experiment_id
+
+        try:
+            base_df = load_and_prepare(csv_path)
+            
+            if base_df is None:
+                error_msg = "Data loading and preparation failed. Check CSV format."
+                logger.error(error_msg)
+                results_summary["error"] = error_msg
+                mlflow.log_param("pipeline_status", "failed_data_load")
+                return results_summary
+
+            df_features = create_time_features(base_df)
+            mlflow.set_tag("dataset_source", os.path.basename(str(csv_path)))
+
+            _, sarima_preds, sarima_actuals, sarima_mape = run_sarima_model(base_df)
+            _, prophet_fcst, _, prophet_mape = run_prophet_model(df_features)
+            _, lstm_preds, lstm_actuals, lstm_dates, lstm_mape = run_lstm_model(base_df)
+
+            results_summary.update({
+                "sarima_mape": sarima_mape,
+                "sarima_predictions": sarima_preds,
+                "sarima_actuals": sarima_actuals,
+                "prophet_mape": prophet_mape,
+                "prophet_forecast_df": prophet_fcst,
+                "lstm_mape": lstm_mape,
+                "lstm_predictions": lstm_preds,
+                "lstm_actuals": lstm_actuals,
+                "lstm_dates": lstm_dates,
+            })
+            mlflow.log_param("pipeline_status", "completed")
+
+        except Exception as e:
+            error_msg = f"An unexpected error occurred in the pipeline: {e}"
+            logger.error(error_msg, exc_info=True)
+            results_summary["error"] = error_msg
+            mlflow.log_param("pipeline_status", "failed_exception")
+
+    logging.info("Forecasting pipeline finished.")
+    return results_summary
+
+# --- Plotting Functions ---
+def plot_forecast(df, y_pred, y_test, title="Forecast"):
+    """Generic plotting function for test vs predictions."""
+    fig, ax = plt.subplots(figsize=(14, 7))
+    sns.set(style="whitegrid")
+    ax.plot(df.index, df['y'], label='Historical Data', color='blue', alpha=0.8)
+    ax.plot(y_test.index, y_test, label='Actual Test Data', color='green', marker='o', linestyle='None', markersize=5)
+    ax.plot(y_test.index, y_pred, label='Model Predictions', color='red', marker='x', linestyle='--')
+    ax.set_title(title, fontsize=16)
+    ax.legend()
+    fig.autofmt_xdate()
+    return fig
+
+def plot_prophet_forecast(df, forecast_df, title="Prophet Forecast"):
+    """Plots Prophet forecast specifically."""
+    fig, ax = plt.subplots(figsize=(14, 7))
+    sns.set(style="whitegrid")
+    test_start_date = forecast_df['ds'].min()
+    ax.plot(df.index, df['y'], label='Historical Data', color='blue', alpha=0.8)
+    actuals_test = df[df.index >= test_start_date]
+    ax.plot(actuals_test.index, actuals_test['y'], label='Actual Test Data', color='green', marker='o', linestyle='None', markersize=5)
+    ax.plot(forecast_df['ds'], forecast_df['yhat'], label='Forecast', color='orange', linestyle='--')
+    ax.fill_between(forecast_df['ds'], forecast_df['yhat_lower'], forecast_df['yhat_upper'], color='orange', alpha=0.2, label='Uncertainty Interval')
+    ax.set_title(title, fontsize=16)
+    ax.legend()
+    fig.autofmt_xdate()
+    return fig

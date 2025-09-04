@@ -128,7 +128,7 @@ def run_prophet_model(df_features):
 def run_lstm_model(df, use_differencing=True):
     """Trains and evaluates a univariate LSTM model, with an option for differencing."""
     logging.info(f"--- Running LSTM model (Differencing: {use_differencing}) ---")
-    seq_len = 14
+    seq_len = 11
     df_lstm = df[['y']].copy()
     
     original_indices = df_lstm.index # Store original indices before differencing
@@ -159,6 +159,7 @@ def run_lstm_model(df, use_differencing=True):
     try:
         model = Sequential([
             LSTM(50, activation='relu', input_shape=(seq_len, 1), return_sequences=True),
+            LSTM(32, activation='relu'),
             Dense(1)
         ])
         optimizer = Adam(learning_rate=0.001) 

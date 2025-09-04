@@ -63,6 +63,8 @@ def run_sarima_model(df):
     train, test = df_sarima[:train_size], df_sarima[train_size:]
 
     try:
+        # Standard seasonal parameters for daily data (s=7 for weekly seasonality)
+        # These (p,d,q)(P,D,Q,s) orders are a common starting point.
         model = SARIMAX(train, order=(1, 1, 1), seasonal_order=(1, 1, 0, 7))
         results = model.fit(disp=False)
         
@@ -158,11 +160,13 @@ def run_lstm_model(df, use_differencing=True):
         y_test_inv = df['y'].iloc[train_size + seq_len:].values
         if use_differencing:
             last_train_value = df['y'].iloc[train_size - 1]
+            # Create a full prediction series by cumulatively adding the predicted differences
             predictions_cumulative = np.cumsum(np.insert(preds_inv_diff.flatten(), 0, last_train_value))
-            preds_inv = predictions_cumulative[1:]
+            preds_inv = predictions_cumulative[1:] # Drop the initial value to align
         else:
             preds_inv = preds_inv_diff
 
+        # Align lengths for evaluation
         min_len = min(len(y_test_inv), len(preds_inv))
         y_test_aligned = y_test_inv[:min_len]
         preds_aligned = preds_inv[:min_len]
@@ -180,28 +184,17 @@ def run_lstm_model(df, use_differencing=True):
     except Exception as e:
         logging.error(f"LSTM model failed: {e}")
         return None, None, None, None, float('inf')
-
-
-# --- Data Loading & Preparation ---
 def load_and_prepare(csv_path):
-    """Loads CSV data and prepares it for forecasting."""
+    """Loads and prepares the dataset."""
     try:
-        df = pd.read_csv(csv_path, parse_dates=True, index_col=0)
-        df = df.sort_index()
-        # Ensure column 'y' exists, or rename appropriately
-        if 'y' not in df.columns:
-            # Try to infer the target column
-            possible_targets = [col for col in df.columns if col.lower() in ['sales', 'target', 'value']]
-            if possible_targets:
-                df.rename(columns={possible_targets[0]: 'y'}, inplace=True)
-            else:
-                logging.error("Target column 'y' not found in CSV.")
-                return None
-        df = df[['y']]
-        df.dropna(inplace=True)
+        df = pd.read_csv(csv_path, parse_dates=['Date'])
+        df = df.rename(columns={'Units Sold': 'y', 'Date': 'ds'})
+        df = df.set_index('ds').asfreq('D')
+        df['y'] = df['y'].interpolate(method='linear')
+        logging.info(f"Data loaded successfully with {len(df)} records.")
         return df
     except Exception as e:
-        logging.error(f"Error loading and preparing data: {e}")
+        logging.error(f"Data loading failed: {e}")
         return None
 
 # --- Main Pipeline Function ---
@@ -215,21 +208,19 @@ def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperime
 
         try:
             base_df = load_and_prepare(csv_path)
-            
             if base_df is None:
-                error_msg = "Data loading and preparation failed. Check CSV format."
-                logger.error(error_msg)
-                results_summary["error"] = error_msg
-                mlflow.log_param("pipeline_status", "failed_data_load")
-                return results_summary
-
+                raise ValueError("Data loading failed.")
+            
+            # 1. Create features
             df_features = create_time_features(base_df)
             mlflow.set_tag("dataset_source", os.path.basename(str(csv_path)))
 
+            # 2. Run models
             _, sarima_preds, sarima_actuals, sarima_mape = run_sarima_model(base_df)
             _, prophet_fcst, _, prophet_mape = run_prophet_model(df_features)
             _, lstm_preds, lstm_actuals, lstm_dates, lstm_mape = run_lstm_model(base_df)
 
+            # 3. Compile results
             results_summary.update({
                 "sarima_mape": sarima_mape,
                 "sarima_predictions": sarima_preds,
@@ -244,7 +235,7 @@ def run_forecasting_pipeline(csv_path, experiment_name="SalesForecastingExperime
             mlflow.log_param("pipeline_status", "completed")
 
         except Exception as e:
-            error_msg = f"An unexpected error occurred in the pipeline: {e}"
+            error_msg = f"Pipeline failed: {e}"
             logger.error(error_msg, exc_info=True)
             results_summary["error"] = error_msg
             mlflow.log_param("pipeline_status", "failed_exception")
@@ -269,10 +260,13 @@ def plot_prophet_forecast(df, forecast_df, title="Prophet Forecast"):
     """Plots Prophet forecast specifically."""
     fig, ax = plt.subplots(figsize=(14, 7))
     sns.set(style="whitegrid")
+    # Plotting historical data from the original df
     test_start_date = forecast_df['ds'].min()
     ax.plot(df.index, df['y'], label='Historical Data', color='blue', alpha=0.8)
+    # Plotting actuals for the test period
     actuals_test = df[df.index >= test_start_date]
     ax.plot(actuals_test.index, actuals_test['y'], label='Actual Test Data', color='green', marker='o', linestyle='None', markersize=5)
+    # Plotting prophet forecast
     ax.plot(forecast_df['ds'], forecast_df['yhat'], label='Forecast', color='orange', linestyle='--')
     ax.fill_between(forecast_df['ds'], forecast_df['yhat_lower'], forecast_df['yhat_upper'], color='orange', alpha=0.2, label='Uncertainty Interval')
     ax.set_title(title, fontsize=16)

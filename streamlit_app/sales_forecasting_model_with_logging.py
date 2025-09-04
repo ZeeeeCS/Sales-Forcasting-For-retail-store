@@ -293,3 +293,16 @@ def plot_prophet_forecast(df, forecast_df, title="Prophet Forecast"):
     ax.legend()
     fig.autofmt_xdate()
     return fig
+def plot_lstm_forecast(df, preds_inv, y_test_inv, test_dates, title="LSTM Forecast"):
+    """Plots the original data and LSTM's forecast."""
+    fig, ax = plt.subplots(figsize=(14, 7))
+    sns.set(style="whitegrid")
+    ax.plot(df.index, df['y'], label='Historical Data', color='blue', alpha=0.8)
+    ax.plot(test_dates, y_test_inv, label='Actual Test Data', color='green', marker='o', linestyle='None', markersize=5)
+    ax.plot(test_dates, preds_inv, label='LSTM Predictions', color='red', marker='x', linestyle='--')
+    ax.set_title(title, fontsize=16)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Units Sold")
+    ax.legend()
+    fig.autofmt_xdate()
+    return fig

@@ -9,7 +9,8 @@ from sales_forecasting_model_with_logging import (
     run_forecasting_pipeline,
     load_and_prepare,
     plot_forecast,
-    plot_prophet_forecast
+    plot_prophet_forecast,
+    plot_lstm_forecast
     )
 
 
@@ -91,7 +92,7 @@ if uploaded_file is not None:
                     lstm_dates = results_summary.get("lstm_dates")
                     if lstm_preds is not None and lstm_actuals is not None and lstm_dates is not None:
                         lstm_test_series = pd.Series(lstm_actuals, index=lstm_dates)
-                        fig = plot_forecast(base_df, lstm_preds, lstm_test_series, "LSTM Forecast with Differencing")
+                        fig = plot_lstm_forecast(base_df, lstm_preds, lstm_test_series, "LSTM Forecast with Differencing")
                         st.pyplot(fig, use_container_width=True)
                         with st.expander("View LSTM Forecast Data"):
                             df_to_show = pd.DataFrame({'Date': lstm_dates, 'Actual': lstm_actuals.flatten(), 'Forecast': lstm_preds.flatten()})

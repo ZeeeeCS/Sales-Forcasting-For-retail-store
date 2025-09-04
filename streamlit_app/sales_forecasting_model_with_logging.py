@@ -162,6 +162,7 @@ def run_lstm_model(df, use_differencing=True):
             LSTM(32, activation='relu'),
             Dense(1)
         ])
+        optimizer = Adam(learning_rate=0.001) 
         model.compile(optimizer='adam', loss='mse')
         model.fit(x_train, y_train, epochs=20, verbose=0, shuffle=False)
         preds_scaled = model.predict(x_test)

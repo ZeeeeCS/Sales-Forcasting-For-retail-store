@@ -2,7 +2,7 @@
 
 ### 🎯 Overview
 
-This project provides a **Streamlit** dashboard for forecasting daily retail sales. It allows users to upload their own sales data in a CSV format and instantly generate sales forecasts using two powerful machine learning models: **Prophet** (by Meta) and a **Long Short-Term Memory (LSTM)** neural network. The dashboard evaluates the performance of each model and provides key metrics to help you choose the best one for your data.
+This project provides a **Streamlit** dashboard for forecasting daily retail sales. It allows users to upload their own sales data in a CSV format and instantly generate sales forecasts using two powerful machine learning models: **Prophet** (by Meta) , **Sarima** and a **Long Short-Term Memory (LSTM)** neural network. The dashboard evaluates the performance of each model and provides key metrics to help you choose the best one for your data.
 
 ### 🚀 Features
 
@@ -11,7 +11,8 @@ This project provides a **Streamlit** dashboard for forecasting daily retail sal
   * **Performance Metrics**: Automatically calculates and displays key metrics like **Mean Absolute Percentage Error (MAPE)**, **Root Mean Squared Error (RMSE)**, and **Mean Absolute Error (MAE)**.
   * **Data Drift Detection**: Implements a basic drift detection mechanism to alert you if the model's performance on new data degrades beyond a set threshold.
   * **MLflow Integration**: Logs all model runs, parameters, and metrics to an **MLflow** experiment for easy tracking, comparison, and reproducibility.
-  * **Visualizations**: Generates informative plots showing the original data, forecast, and uncertainty intervals for a clear visual understanding of the model's predictions.
+  * **Visualizations**: Generates informative plots showing the original data, forecast, and uncertainty intervals for a clear visual understanding of the model's predictions
+  * Sarima model used to predict for 6 months and show Visualiztion.
 
 -----
 

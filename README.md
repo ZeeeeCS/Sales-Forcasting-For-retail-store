@@ -11,8 +11,13 @@ This project provides a **Streamlit** dashboard for forecasting daily retail sal
   * **Performance Metrics**: Automatically calculates and displays key metrics like **Mean Absolute Percentage Error (MAPE)**, **Root Mean Squared Error (RMSE)**, and **Mean Absolute Error (MAE)**.
   * **Data Drift Detection**: Implements a basic drift detection mechanism to alert you if the model's performance on new data degrades beyond a set threshold.
   * **MLflow Integration**: Logs all model runs, parameters, and metrics to an **MLflow** experiment for easy tracking, comparison, and reproducibility.
-  * **Visualizations**: Generates informative plots showing the original data, forecast, and uncertainty intervals for a clear visual understanding of the model's predictions
-  * Sarima model used to predict for 6 months and show Visualiztion.
+  * **Visualizations**: Generates informative plots showing the original data, forecast, and uncertainty intervals for a clear visual understanding of the model's predictions,
+    
+   Model Comparison: Visualizes the performance of SARIMA, Prophet, and LSTM against historical test data.
+
+   Future Forecast: After identifying the best model (SARIMA), it generates and plots a forecast for the next six months, showing the expected trend and seasonality.
+
+   Uncertainty Intervals: Includes uncertainty intervals in the plots to provide a realistic range of potential future outcomes.
 
 -----
 
